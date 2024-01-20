@@ -1,12 +1,15 @@
-import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import { ContractFactory } from "ethers";
 import { describe, test } from "mocha";
-import { strictEqual } from "node:assert";
+import assert, { strictEqual } from "node:assert";
 import { Sap as SapContract } from "../typechain-types/contracts/Sap";
 import { Token as TokenContract } from "../typechain-types/contracts/Token";
 
 // @ts-ignore
 import { ethers } from "hardhat";
+
+// all time on chain is in second
+const DAY_MULTIPLIER = 24 * 60 * 60;
 
 async function deploy() {
   const [owner, otherAccount] = await ethers.getSigners();
@@ -85,6 +88,41 @@ describe("deploy test", () => {
       await sap.getAssetPriceId(1),
       "sap pyth price id is not right",
     );
+  });
+});
+
+describe("token test", () => {
+  test("should claim right", async () => {
+    const { otherAccount, token } = await loadFixture(deploy);
+    const claimAmount = await token.getClaimAmount();
+    const otherTokenBalance = await token.balanceOf(otherAccount.address);
+    await token.connect(otherAccount).claim();
+    const otherTokenBalanceAfterClaim = await token.balanceOf(
+      otherAccount.address,
+    );
+    strictEqual(
+      otherTokenBalanceAfterClaim.toString(),
+      (otherTokenBalance + claimAmount).toString(),
+      "token balance is not right after claim",
+    );
+  });
+  test("should not claim before claim time", async () => {
+    const { otherAccount, token } = await loadFixture(deploy);
+    await token.connect(otherAccount).claim();
+    try {
+      await token.connect(otherAccount).claim();
+      assert(false, "claim before claim time");
+    } catch (e) {}
+  });
+  test("should claim after claim time", async () => {
+    const { otherAccount, token } = await loadFixture(deploy);
+    await token.connect(otherAccount).claim();
+    await time.increase(1 * DAY_MULTIPLIER);
+    try {
+      await token.connect(otherAccount).claim();
+    } catch (e) {
+      assert(false, "can not claim after claim time");
+    }
   });
 });
 

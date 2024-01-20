@@ -22,8 +22,7 @@
     "ethers": "^6.9.0",
     "hardhat": "^2.19.1",
     "hardhat-gas-reporter": "^1.0.9",
-    "https-proxy-agent": "^7.0.2",
-    "web3": "^4.3.0"
+    "https-proxy-agent": "^7.0.2"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",

@@ -3,22 +3,18 @@ import { ethers } from "hardhat";
 
 async function main() {
   // deploy token
-  // const usdc = await ethers.deployContract("Token", ["USDC", "USDC"]);
-  // await usdc.waitForDeployment();
-  // console.log("USDC deployed to", usdc.target);
-  // const btc = await ethers.deployContract("Token", ["BTC", "BTC"]);
-  // await btc.waitForDeployment();
-  // console.log("BTC deployed to", btc.target);
-  // const eth = await ethers.deployContract("Token", ["WETH", "WETH"]);
-  // await eth.waitForDeployment();
-  // console.log("ETH deployed to", eth.target);
-  // const bnb = await ethers.deployContract("Token", ["BNB", "BNB"]);
-  // await bnb.waitForDeployment();
-  // console.log("BNB deployed to", bnb.target);
-  const usdc = { target: "0x602FA06D258571BBE03e05Fd09C96035d425757D" };
-  const btc = { target: "0x999465395081B7e57ccda9e1d3CCF6Bd7525CA99" };
-  const eth = { target: "0xf73306A78d66fE18C7a8F5df13aD3f3aA65dE31c" };
-  const bnb = { target: "0x3308A241E42e8B59de1a5f3fA4A1A3Ab2E3d46EF" };
+  const usdc = await ethers.deployContract("Token", ["USDC", "USDC"]);
+  await usdc.waitForDeployment();
+  console.log("USDC deployed to", usdc.target);
+  const btc = await ethers.deployContract("Token", ["BTC", "BTC"]);
+  await btc.waitForDeployment();
+  console.log("BTC deployed to", btc.target);
+  const eth = await ethers.deployContract("Token", ["WETH", "WETH"]);
+  await eth.waitForDeployment();
+  console.log("ETH deployed to", eth.target);
+  const bnb = await ethers.deployContract("Token", ["BNB", "BNB"]);
+  await bnb.waitForDeployment();
+  console.log("BNB deployed to", bnb.target);
   const sol = await ethers.deployContract("Token", ["SOL", "SOL"]);
   await sol.waitForDeployment();
   console.log("SOL deployed to", sol.target);
@@ -26,8 +22,10 @@ async function main() {
   const sap = await ethers.deployContract("Sap", [
     "Sap",
     "SAP",
+    // https://docs.pyth.network/documentation/pythnet-price-feeds/evm#examples
     "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
     [usdc.target, btc.target, eth.target, bnb.target, sol.target],
+    // https://pyth.network/developers/price-feed-ids#pyth-evm-stable
     [
       "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
       "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
