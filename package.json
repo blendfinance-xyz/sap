@@ -1,0 +1,52 @@
+{
+  "name": "blast-sap",
+  "version": "0.1.0",
+  "author": "alex",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "test": "npx hardhat test",
+    "clean": "npx hardhat clean",
+    "compile": "npx hardhat compile",
+    "start-node": "npx hardhat node",
+    "deploy": "npx hardhat run --network blast-sepolia scripts/deploy.ts"
+  },
+  "dependencies": {
+    "@ethersproject/abi": "^5.7.0",
+    "@ethersproject/providers": "^5.7.2",
+    "@openzeppelin/contracts": "^5.0.0",
+    "@pythnetwork/pyth-sdk-solidity": "^2.3.0",
+    "@uniswap/lib": "^4.0.1-alpha",
+    "@uniswap/v2-core": "^1.0.1",
+    "@uniswap/v2-periphery": "^1.1.0-beta.0",
+    "ethers": "^6.9.0",
+    "hardhat": "^2.19.1",
+    "hardhat-gas-reporter": "^1.0.9",
+    "https-proxy-agent": "^7.0.2",
+    "web3": "^4.3.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
+    "@nomicfoundation/hardhat-ethers": "^3.0.5",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.9",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.1",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@typechain/hardhat": "^9.1.0",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.10.2",
+    "chai": "^4.3.10",
+    "eslint": "^8.55.0",
+    "prettier": "^3.1.0",
+    "solidity-coverage": "^0.8.5",
+    "ts-node": "^10.9.1",
+    "typechain": "^8.3.2",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": "^20.8.1"
+  },
+  "packageManager": "yarn@1.22.9"
+}

@@ -1,0 +1,33 @@
+{
+  "root": true,
+  "env": {
+    "es6": true,
+    "node": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    // 设置为 "script" (默认) 或 "module"（如果你的代码是 ECMAScript 模块)。 
+    "sourceType": "module"
+    // https://eslint.bootcss.com/docs/user-guide/configuring
+  },
+  "plugins": [
+    "@typescript-eslint"
+  ],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  // 0 off 1 warn 2 error
+  "rules": {
+    "quotes": [
+      2,
+      "double"
+    ],
+    "semi": [
+      2,
+      "always"
+    ],
+    "no-console": 0
+  }
+}
