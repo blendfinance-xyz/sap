@@ -8,7 +8,8 @@
     "clean": "npx hardhat clean",
     "compile": "npx hardhat compile",
     "start-node": "npx hardhat node",
-    "deploy": "npx hardhat run --network blast-sepolia scripts/deploy.ts"
+    "deploy": "npx hardhat run --network blast-sepolia scripts/deploy.ts",
+    "verify": "npx hardhat verify --network blast-sepolia"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.7.0",
