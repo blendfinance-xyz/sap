@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IPyth } from "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import { PythStructs } from "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
@@ -13,7 +14,7 @@ contract Sap is Ownable, ERC20 {
   struct Asset {
     address token;
     bytes32 priceId;
-    ERC20 tokenContract;
+    uint8 decimals;
   }
 
   struct InitAsset {
@@ -41,7 +42,7 @@ contract Sap is Ownable, ERC20 {
         Asset({
           token: assets_[i].token,
           priceId: assets_[i].priceId,
-          tokenContract: ERC20(assets_[i].token)
+          decimals: ERC20(assets_[i].token).decimals()
         })
       );
     }
@@ -96,7 +97,8 @@ contract Sap is Ownable, ERC20 {
     require(amounts_.length == _assets.length, "Sap: invalid amounts");
     for (uint256 i = 0; i < _assets.length; i++) {
       Asset memory asset = _assets[i];
-      asset.tokenContract.transferFrom(msg.sender, address(this), amounts_[i]);
+      IERC20 tc = IERC20(asset.token);
+      tc.transferFrom(msg.sender, address(this), amounts_[i]);
     }
     _mint(msg.sender, amount_);
     _initialized = true;
@@ -146,7 +148,12 @@ contract Sap is Ownable, ERC20 {
         _pyth.getPrice(asset.priceId),
         decimals()
       );
-      uint256 assetBalance = asset.tokenContract.balanceOf(address(this));
+      IERC20 tc = IERC20(asset.token);
+      uint256 assetBalance = Math.mulDiv(
+        tc.balanceOf(address(this)),
+        10 ** decimals(),
+        10 ** asset.decimals
+      );
       volumn += _safeMul(assetPrice, assetBalance);
     }
     return _safeDiv(volumn, totalSupply());
@@ -166,7 +173,8 @@ contract Sap is Ownable, ERC20 {
     require(_initialized, "Sap: not initialized");
     IUniswapV2Router02 router = IUniswapV2Router02(router_);
     Asset memory assetIn = _getAssetByToken(path[0]);
-    assetIn.tokenContract.approve(router_, amountIn);
+    IERC20 tc = IERC20(assetIn.token);
+    tc.approve(router_, amountIn);
     // avoid swap to token not in assets
     _getAssetByToken(path[path.length - 1]);
     // do swap
@@ -192,7 +200,11 @@ contract Sap is Ownable, ERC20 {
       _pyth.getPrice(asset.priceId),
       decimals()
     );
-    uint256 buyAmount = Math.mulDiv(payAmount, assetPrice, price);
+    uint256 buyAmount = Math.mulDiv(
+      Math.mulDiv(payAmount, 10 ** decimals(), 10 ** asset.decimals),
+      assetPrice,
+      price
+    );
     return (asset, buyAmount, price);
   }
 
@@ -220,7 +232,8 @@ contract Sap is Ownable, ERC20 {
       payAmount,
       token
     );
-    asset.tokenContract.transferFrom(msg.sender, address(this), payAmount);
+    IERC20 tc = IERC20(asset.token);
+    tc.transferFrom(msg.sender, address(this), payAmount);
     _mint(msg.sender, buyAmount);
     emit Buy(msg.sender, buyAmount, price);
     return buyAmount;
@@ -239,7 +252,11 @@ contract Sap is Ownable, ERC20 {
       _pyth.getPrice(asset.priceId),
       decimals()
     );
-    uint256 receiveAmount = Math.mulDiv(sellAmount, price, assetPrice);
+    uint256 receiveAmount = Math.mulDiv(
+      Math.mulDiv(sellAmount, price, assetPrice),
+      10 ** asset.decimals,
+      10 ** decimals()
+    );
     return (asset, receiveAmount, price);
   }
 
@@ -268,7 +285,8 @@ contract Sap is Ownable, ERC20 {
       token
     );
     _burn(msg.sender, sellAmount);
-    asset.tokenContract.transfer(msg.sender, receiveAmount);
+    IERC20 tc = IERC20(asset.token);
+    tc.transfer(msg.sender, receiveAmount);
     emit Sell(msg.sender, sellAmount, price);
     return receiveAmount;
   }
