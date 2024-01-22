@@ -13,16 +13,17 @@ import { IBlast } from "../interfaces/IBlast.sol";
 contract Sap is Ownable, ERC20 {
   struct Asset {
     address token;
-    bytes32 priceId;
+    bytes32 pythPriceId;
     uint8 decimals;
   }
 
   struct InitAsset {
     address token;
-    bytes32 priceId;
+    bytes32 pythPriceId;
   }
 
-  IPyth private _pyth;
+  address private _pyth;
+  address private _uniswapRouter;
   Asset[] private _assets;
   bool private _initialized = false;
 
@@ -30,18 +31,24 @@ contract Sap is Ownable, ERC20 {
   event Buy(address indexed account, uint256 amount, uint256 price);
   event Sell(address indexed account, uint256 amount, uint256 price);
 
+  /**
+   * @notice the first asset must be usdt or usdc
+   * @notice the price id should be asset.token to usd
+   */
   constructor(
     string memory name_,
     string memory symbol_,
     address pyth_,
+    address uniswapRouter_,
     InitAsset[] memory assets_
   ) Ownable(msg.sender) ERC20(name_, symbol_) {
-    _pyth = IPyth(pyth_);
+    _pyth = pyth_;
+    _uniswapRouter = uniswapRouter_;
     for (uint256 i = 0; i < assets_.length; i++) {
       _assets.push(
         Asset({
           token: assets_[i].token,
-          priceId: assets_[i].priceId,
+          pythPriceId: assets_[i].pythPriceId,
           decimals: ERC20(assets_[i].token).decimals()
         })
       );
@@ -83,12 +90,13 @@ contract Sap is Ownable, ERC20 {
    * @param index the index of the asset
    * @return the asset price id
    */
-  function getAssetPriceId(uint256 index) public view returns (bytes32) {
-    return _assets[index].priceId;
+  function getAssetPythPriceId(uint256 index) public view returns (bytes32) {
+    return _assets[index].pythPriceId;
   }
 
   /**
    * @dev initialize the pool
+   * @notice this function should be called only once
    * @param amounts_ the amounts of the assets
    * @param amount_ the amount of sap
    */
@@ -105,10 +113,11 @@ contract Sap is Ownable, ERC20 {
     emit Init(getPrice(), amount_);
   }
 
-  function _getAssetPrice(
-    PythStructs.Price memory price,
+  function _getAssetPriceFromPyth(
+    Asset memory asset,
     uint8 targetDecimals
-  ) internal pure returns (uint256) {
+  ) internal view returns (uint256) {
+    PythStructs.Price memory price = IPyth(_pyth).getPrice(asset.pythPriceId);
     require(price.price > 0, "SAP: invalid price");
     require(price.expo < 0, "SAP: invalid price expo");
     require(price.expo > -255, "SAP: invalid price expo");
@@ -128,12 +137,42 @@ contract Sap is Ownable, ERC20 {
     }
   }
 
+  function _getAssetPriceFromUniswap(
+    Asset memory asset,
+    uint8 targetDecimals
+  ) internal view returns (uint256) {
+    address[] memory path = new address[](2);
+    path[0] = asset.token;
+    path[1] = _assets[0].token;
+    uint8 decimals = _assets[0].decimals;
+    uint256[] memory amounts = IUniswapV2Router02(_uniswapRouter).getAmountsOut(
+      10 ** asset.decimals,
+      path
+    );
+    if (decimals >= targetDecimals) {
+      return _safeDiv(amounts[1], 10 ** (decimals - targetDecimals));
+    } else {
+      return _safeMul(amounts[1], 10 ** (targetDecimals - decimals));
+    }
+  }
+
+  function _getAssetPrice(
+    Asset memory asset,
+    uint8 targetDecimals
+  ) internal view returns (uint256) {
+    if (asset.pythPriceId == 0x0000000000000000000000000000000000000000000000000000000000000000) {
+      return _getAssetPriceFromUniswap(asset, targetDecimals);
+    } else {
+      return _getAssetPriceFromPyth(asset, targetDecimals);
+    }
+  }
+
   /**
    * @dev get the price of the asset
    * @param index the index of the asset
    */
   function getAssetPrice(uint256 index) public view returns (uint256) {
-    return _getAssetPrice(_pyth.getPrice(_assets[index].priceId), decimals());
+    return _getAssetPrice(_assets[index], decimals());
   }
 
   /**
@@ -144,10 +183,7 @@ contract Sap is Ownable, ERC20 {
     uint256 volumn = 0;
     for (uint256 i = 0; i < _assets.length; i++) {
       Asset memory asset = _assets[i];
-      uint256 assetPrice = _getAssetPrice(
-        _pyth.getPrice(asset.priceId),
-        decimals()
-      );
+      uint256 assetPrice = _getAssetPrice(asset, decimals());
       IERC20 tc = IERC20(asset.token);
       uint256 assetBalance = Math.mulDiv(
         tc.balanceOf(address(this)),
@@ -196,10 +232,7 @@ contract Sap is Ownable, ERC20 {
     uint256 price = getPrice();
     // asset price
     Asset memory asset = _getAssetByToken(token);
-    uint256 assetPrice = _getAssetPrice(
-      _pyth.getPrice(asset.priceId),
-      decimals()
-    );
+    uint256 assetPrice = _getAssetPrice(asset, decimals());
     uint256 buyAmount = Math.mulDiv(
       Math.mulDiv(payAmount, 10 ** decimals(), 10 ** asset.decimals),
       assetPrice,
@@ -248,10 +281,7 @@ contract Sap is Ownable, ERC20 {
     uint256 price = getPrice();
     // asset price
     Asset memory asset = _getAssetByToken(token);
-    uint256 assetPrice = _getAssetPrice(
-      _pyth.getPrice(asset.priceId),
-      decimals()
-    );
+    uint256 assetPrice = _getAssetPrice(asset, decimals());
     uint256 receiveAmount = Math.mulDiv(
       Math.mulDiv(sellAmount, price, assetPrice),
       10 ** asset.decimals,

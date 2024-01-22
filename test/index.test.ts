@@ -5,6 +5,8 @@ import assert, { strictEqual } from "node:assert";
 import { Sap as SapContract } from "../typechain-types/contracts/Sap";
 import { Token as TokenContract } from "../typechain-types/contracts/Token";
 import { Pyth as PythContract } from "../typechain-types/contracts/Pyth";
+import { UniswapV2Factory as UniswapV2FactoryContract } from "../typechain-types/contracts/UniswapV2Factory";
+import { UniswapV2Router02 as UniswapV2Router02Contract } from "../typechain-types/contracts/UniswapV2Router02";
 
 // @ts-ignore
 import { ethers } from "hardhat";
@@ -37,7 +39,7 @@ function b2n(b: bigint, decimals: number | bigint): number {
 }
 
 function assertNumber(a: number, b: number, msg?: string) {
-  strictEqual(a.toFixed(3), b.toFixed(3), msg);
+  assert(Math.abs(a - b) < 0.001, msg);
 }
 
 async function deploy() {
@@ -49,17 +51,20 @@ async function deploy() {
   const weth = (await Token.deploy("Wrapped ETH", "WETH")) as TokenContract;
   const bnb = (await Token.deploy("BNB", "BNB")) as TokenContract;
   const sol = (await Token.deploy("Solana", "SOL")) as TokenContract;
+  const joey = (await Token.deploy("Joey", "JOEY")) as TokenContract;
   const initAmount = 1000n * 10n ** 18n;
-  await usdc.mint(owner.address, initAmount);
+  await usdc.mint(owner.address, initAmount + 1n * 10n ** 18n);
   await btc.mint(owner.address, initAmount);
   await weth.mint(owner.address, initAmount);
   await bnb.mint(owner.address, initAmount);
   await sol.mint(owner.address, initAmount);
+  await joey.mint(owner.address, 100n * initAmount);
   await usdc.mint(otherAccount.address, initAmount);
   await btc.mint(otherAccount.address, initAmount);
   await weth.mint(otherAccount.address, initAmount);
   await bnb.mint(otherAccount.address, initAmount);
   await sol.mint(otherAccount.address, initAmount);
+  await joey.mint(otherAccount.address, initAmount);
   // pyth
   const pythPriceIds = {
     usdc: "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
@@ -67,6 +72,7 @@ async function deploy() {
     weth: "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
     bnb: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
     sol: "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
+    null: "0x0000000000000000000000000000000000000000000000000000000000000000",
   };
   const pythPrices = {
     usdc: 0.9999,
@@ -82,6 +88,41 @@ async function deploy() {
   await pyth.putPrice(pythPriceIds.weth, n2b(pythPrices.weth, 6), -6);
   await pyth.putPrice(pythPriceIds.bnb, n2b(pythPrices.bnb, 6), -6);
   await pyth.putPrice(pythPriceIds.sol, n2b(pythPrices.sol, 6), -6);
+  // uniswap
+  const UniswapFactory: ContractFactory =
+    await ethers.getContractFactory("UniswapV2Factory");
+  const uniswapFactory = (await UniswapFactory.deploy(
+    owner.address,
+  )) as UniswapV2FactoryContract;
+  await uniswapFactory.createPair(
+    await usdc.getAddress(),
+    await joey.getAddress(),
+  );
+  // console.log("init code hash", await uniswapFactory.INIT_CODE_HASH());
+  const UniswapRouter02: ContractFactory =
+    await ethers.getContractFactory("UniswapV2Router02");
+  const uniswapRouter02 = (await UniswapRouter02.deploy(
+    await uniswapFactory.getAddress(),
+    await weth.getAddress(),
+  )) as UniswapV2Router02Contract;
+  await usdc.approve(
+    await uniswapRouter02.getAddress(),
+    n2b(1, await usdc.decimals()),
+  );
+  await joey.approve(
+    await uniswapRouter02.getAddress(),
+    n2b(100, await joey.decimals()),
+  );
+  await uniswapRouter02.addLiquidity(
+    await usdc.getAddress(),
+    await joey.getAddress(),
+    n2b(1, await usdc.decimals()),
+    n2b(100, await joey.decimals()),
+    n2b(1, await usdc.decimals()),
+    n2b(100, await joey.decimals()),
+    owner.address,
+    Math.ceil(Date.now() / 1000.0) + DAY_MULTIPLIER,
+  );
   // sap
   const sapInitAmount = {
     usdc: n2b(100, await usdc.decimals()),
@@ -90,30 +131,41 @@ async function deploy() {
     bnb: n2b(3, await bnb.decimals()),
     sol: n2b(4, await sol.decimals()),
     sap: n2b(100, 18),
+    joey: n2b(100, await joey.decimals()),
   };
   const Sap: ContractFactory = await ethers.getContractFactory("Sap");
-  const sap = (await Sap.deploy("Sap", "SAP", await pyth.getAddress(), [
-    {
-      token: await usdc.getAddress(),
-      priceId: pythPriceIds.usdc,
-    },
-    {
-      token: await btc.getAddress(),
-      priceId: pythPriceIds.btc,
-    },
-    {
-      token: await weth.getAddress(),
-      priceId: pythPriceIds.weth,
-    },
-    {
-      token: await bnb.getAddress(),
-      priceId: pythPriceIds.bnb,
-    },
-    {
-      token: await sol.getAddress(),
-      priceId: pythPriceIds.sol,
-    },
-  ])) as SapContract;
+  const sap = (await Sap.deploy(
+    "Sap",
+    "SAP",
+    await pyth.getAddress(),
+    await uniswapRouter02.getAddress(),
+    [
+      {
+        token: await usdc.getAddress(),
+        pythPriceId: pythPriceIds.usdc,
+      },
+      {
+        token: await btc.getAddress(),
+        pythPriceId: pythPriceIds.btc,
+      },
+      {
+        token: await weth.getAddress(),
+        pythPriceId: pythPriceIds.weth,
+      },
+      {
+        token: await bnb.getAddress(),
+        pythPriceId: pythPriceIds.bnb,
+      },
+      {
+        token: await sol.getAddress(),
+        pythPriceId: pythPriceIds.sol,
+      },
+      {
+        token: await joey.getAddress(),
+        pythPriceId: pythPriceIds.null,
+      },
+    ],
+  )) as SapContract;
   return {
     owner,
     otherAccount,
@@ -123,9 +175,12 @@ async function deploy() {
     weth,
     bnb,
     sol,
+    joey,
     pythPriceIds,
     pythPrices,
     pyth,
+    uniswapFactory,
+    uniswapRouter02,
     sap,
     sapInitAmount,
   };
@@ -144,7 +199,7 @@ describe("deploy test", () => {
     strictEqual(await sap.owner(), owner.address, "sap owner is not right");
   });
   test("should be right token", async () => {
-    const { usdc, btc, weth, bnb, sol, sap } = await loadFixture(deploy);
+    const { usdc, btc, weth, bnb, sol, joey, sap } = await loadFixture(deploy);
     strictEqual(
       await usdc.getAddress(),
       await sap.getAssetToken(0),
@@ -170,33 +225,43 @@ describe("deploy test", () => {
       await sap.getAssetToken(4),
       "sap token 4 is not right",
     );
+    strictEqual(
+      await joey.getAddress(),
+      await sap.getAssetToken(5),
+      "sap token 5 is not right",
+    );
   });
   test("should be right pyth price id", async () => {
     const { pythPriceIds, sap } = await loadFixture(deploy);
     strictEqual(
       pythPriceIds.usdc,
-      await sap.getAssetPriceId(0),
+      await sap.getAssetPythPriceId(0),
       "sap pyth price id 0 is not right",
     );
     strictEqual(
       pythPriceIds.btc,
-      await sap.getAssetPriceId(1),
+      await sap.getAssetPythPriceId(1),
       "sap pyth price id 1 is not right",
     );
     strictEqual(
       pythPriceIds.weth,
-      await sap.getAssetPriceId(2),
+      await sap.getAssetPythPriceId(2),
       "sap pyth price id 2 is not right",
     );
     strictEqual(
       pythPriceIds.bnb,
-      await sap.getAssetPriceId(3),
+      await sap.getAssetPythPriceId(3),
       "sap pyth price id 3 is not right",
     );
     strictEqual(
       pythPriceIds.sol,
-      await sap.getAssetPriceId(4),
+      await sap.getAssetPythPriceId(4),
       "sap pyth price id 4 is not right",
+    );
+    strictEqual(
+      pythPriceIds.null,
+      await sap.getAssetPythPriceId(5),
+      "sap pyth price id 5 is not right",
     );
   });
 });
@@ -205,6 +270,7 @@ describe("pyth test", () => {
   test("should be right price", async () => {
     const { pyth, pythPriceIds, pythPrices } = await loadFixture(deploy);
     async function t(priceId: string, price: number, exponent: number) {
+      if (priceId === pythPriceIds.null) return;
       const p = await pyth.getPrice(priceId);
       strictEqual(
         b2n(p[0], exponent),
@@ -223,16 +289,44 @@ describe("pyth test", () => {
   });
 });
 
+describe("uniswap test", () => {
+  test("should be right pair", async () => {
+    const { uniswapFactory } = await loadFixture(deploy);
+    const length = await uniswapFactory.allPairsLength();
+    strictEqual(length, 1n, "uniswap pair length is not right");
+  });
+  test("should be right price", async () => {
+    const { usdc, joey, uniswapRouter02 } = await loadFixture(deploy);
+    const decimals = await joey.decimals();
+    const price = await uniswapRouter02.getAmountsOut(
+      n2b(1, await usdc.decimals()),
+      [await usdc.getAddress(), await joey.getAddress()],
+    );
+    assertNumber(b2n(price[1], decimals), 49.925, "uniswap price is not right");
+  });
+});
+
 describe("business test", () => {
   async function init() {
-    const { owner, usdc, btc, weth, bnb, sol, sap, sapInitAmount, ...rest } =
-      await loadFixture(deploy);
+    const {
+      owner,
+      usdc,
+      btc,
+      weth,
+      bnb,
+      sol,
+      joey,
+      sap,
+      sapInitAmount,
+      ...rest
+    } = await loadFixture(deploy);
     const sapAddress = await sap.getAddress();
     await usdc.approve(sapAddress, sapInitAmount.usdc);
     await btc.approve(sapAddress, sapInitAmount.btc);
     await weth.approve(sapAddress, sapInitAmount.weth);
     await bnb.approve(sapAddress, sapInitAmount.bnb);
     await sol.approve(sapAddress, sapInitAmount.sol);
+    await joey.approve(sapAddress, sapInitAmount.joey);
     await sap.init(
       [
         sapInitAmount.usdc,
@@ -240,10 +334,22 @@ describe("business test", () => {
         sapInitAmount.weth,
         sapInitAmount.bnb,
         sapInitAmount.sol,
+        sapInitAmount.joey,
       ],
       sapInitAmount.sap,
     );
-    return { owner, usdc, btc, weth, bnb, sol, sap, sapInitAmount, ...rest };
+    return {
+      owner,
+      usdc,
+      btc,
+      weth,
+      bnb,
+      sol,
+      joey,
+      sap,
+      sapInitAmount,
+      ...rest,
+    };
   }
   test("should init right", async () => {
     const { owner, usdc, btc, weth, bnb, sol, sap, sapInitAmount } =
@@ -303,26 +409,46 @@ describe("business test", () => {
     );
   });
   test("should be right price", async () => {
-    const { usdc, btc, weth, bnb, sol, sap, pyth, pythPriceIds } = await init();
+    const {
+      usdc,
+      btc,
+      weth,
+      bnb,
+      sol,
+      joey,
+      sap,
+      pyth,
+      pythPriceIds,
+      uniswapRouter02,
+    } = await init();
     const decimals = await sap.decimals();
     const address = await sap.getAddress();
-    const ids = Object.values(pythPriceIds);
-    const contracts = [usdc, btc, weth, bnb, sol];
+    const contracts = [usdc, btc, weth, bnb, sol, joey];
+    const priceIds = [
+      pythPriceIds.usdc,
+      pythPriceIds.btc,
+      pythPriceIds.weth,
+      pythPriceIds.bnb,
+      pythPriceIds.sol,
+    ];
     let volumn = 0;
-    for (let i = 0; i < 5; i++) {
-      const assetPrice = await sap.getAssetPrice(i);
-      // check assets price
-      const pythPrice = await pyth.getPrice(ids[i]);
-      strictEqual(
-        b2n(assetPrice, decimals),
-        b2n(pythPrice[0], -1n * pythPrice[2]),
-        `sap asset price ${i} is not right`,
-      );
-      // calculate volumn
-      const assetAmount = await contracts[i].balanceOf(address);
-      volumn +=
-        b2n(assetAmount, await contracts[i].decimals()) *
-        b2n(assetPrice, decimals);
+    for (let i = 0; i < contracts.length; i++) {
+      const c = contracts[i];
+      const assetDecimals = await c.decimals();
+      const price: number = await (async function (id?: string) {
+        if (!id) {
+          const price = await uniswapRouter02.getAmountsOut(
+            n2b(1, assetDecimals),
+            [await c.getAddress(), await usdc.getAddress()],
+          );
+          return b2n(price[1], assetDecimals);
+        } else {
+          const p = await pyth.getPrice(id);
+          return b2n(p[0], p[2] * -1n);
+        }
+      })(priceIds[i]);
+      const amount = await c.balanceOf(address);
+      volumn += b2n(amount, assetDecimals) * price;
     }
     // check sap price
     const price = await sap.getPrice();
