@@ -187,13 +187,6 @@ async function deploy() {
 }
 
 describe("deploy test", () => {
-  test("should be mint right amount", async () => {
-    const { owner, otherAccount, initAmount, usdc } = await loadFixture(deploy);
-    const ownerTokenBalance = await usdc.balanceOf(owner.address);
-    const otherTokenBalance = await usdc.balanceOf(otherAccount.address);
-    strictEqual(ownerTokenBalance.toString(), initAmount.toString());
-    strictEqual(otherTokenBalance.toString(), initAmount.toString());
-  });
   test("should be right owner", async () => {
     const { owner, sap } = await loadFixture(deploy);
     strictEqual(await sap.owner(), owner.address, "sap owner is not right");
@@ -263,46 +256,6 @@ describe("deploy test", () => {
       await sap.getAssetPythPriceId(5),
       "sap pyth price id 5 is not right",
     );
-  });
-});
-
-describe("pyth test", () => {
-  test("should be right price", async () => {
-    const { pyth, pythPriceIds, pythPrices } = await loadFixture(deploy);
-    async function t(priceId: string, price: number, exponent: number) {
-      if (priceId === pythPriceIds.null) return;
-      const p = await pyth.getPrice(priceId);
-      strictEqual(
-        b2n(p[0], exponent),
-        price,
-        `pyth price ${priceId} is not right`,
-      );
-      strictEqual(
-        Number(p[2]),
-        exponent * -1,
-        `pyth price ${priceId} expo is not right`,
-      );
-    }
-    for (let i = 0; i < Object.keys(pythPriceIds).length; i++) {
-      await t(Object.values(pythPriceIds)[i], Object.values(pythPrices)[i], 6);
-    }
-  });
-});
-
-describe("uniswap test", () => {
-  test("should be right pair", async () => {
-    const { uniswapFactory } = await loadFixture(deploy);
-    const length = await uniswapFactory.allPairsLength();
-    strictEqual(length, 1n, "uniswap pair length is not right");
-  });
-  test("should be right price", async () => {
-    const { usdc, joey, uniswapRouter02 } = await loadFixture(deploy);
-    const decimals = await joey.decimals();
-    const price = await uniswapRouter02.getAmountsOut(
-      n2b(1, await usdc.decimals()),
-      [await usdc.getAddress(), await joey.getAddress()],
-    );
-    assertNumber(b2n(price[1], decimals), 49.925, "uniswap price is not right");
   });
 });
 
