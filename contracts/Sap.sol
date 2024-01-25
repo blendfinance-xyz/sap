@@ -160,7 +160,10 @@ contract Sap is Ownable, ERC20 {
     Asset memory asset,
     uint8 targetDecimals
   ) internal view returns (uint256) {
-    if (asset.pythPriceId == 0x0000000000000000000000000000000000000000000000000000000000000000) {
+    if (
+      asset.pythPriceId ==
+      0x0000000000000000000000000000000000000000000000000000000000000000
+    ) {
       return _getAssetPriceFromUniswap(asset, targetDecimals);
     } else {
       return _getAssetPriceFromPyth(asset, targetDecimals);
@@ -256,7 +259,7 @@ contract Sap is Ownable, ERC20 {
 
   /**
    * @dev buy sap, could put in any token in the pool
-   * @param payAmount paid amount
+   * @param payAmount the amount of token to pay
    * @param token the token to pay
    * @return the amount has bought
    */
@@ -272,7 +275,38 @@ contract Sap is Ownable, ERC20 {
     return buyAmount;
   }
 
-  function _getSellAmount(
+  function _getPayAmount(
+    uint256 buyAmount,
+    address token
+  ) internal view returns (Asset memory, uint256, uint256) {
+    require(_initialized, "Sap: not initialized");
+    // sap price
+    uint256 price = getPrice();
+    // asset price
+    Asset memory asset = _getAssetByToken(token);
+    uint256 assetPrice = _getAssetPrice(asset, decimals());
+    uint256 payAmount = Math.mulDiv(
+      Math.mulDiv(buyAmount, 10 ** asset.decimals, 10 ** decimals()),
+      price,
+      assetPrice
+    );
+    return (asset, payAmount, price);
+  }
+
+  /**
+   * @dev get the amount of token will pay
+   * @param buyAmount the amount of sap to buy
+   * @param token the token to pay
+   */
+  function getPayAmount(
+    uint256 buyAmount,
+    address token
+  ) public view returns (uint256) {
+    (, uint256 payAmount, ) = _getPayAmount(buyAmount, token);
+    return payAmount;
+  }
+
+  function _getReceiveAmount(
     uint256 sellAmount,
     address token
   ) internal view returns (Asset memory, uint256, uint256) {
@@ -283,9 +317,9 @@ contract Sap is Ownable, ERC20 {
     Asset memory asset = _getAssetByToken(token);
     uint256 assetPrice = _getAssetPrice(asset, decimals());
     uint256 receiveAmount = Math.mulDiv(
-      Math.mulDiv(sellAmount, price, assetPrice),
-      10 ** asset.decimals,
-      10 ** decimals()
+      Math.mulDiv(sellAmount, 10 ** asset.decimals, 10 ** decimals()),
+      price,
+      assetPrice
     );
     return (asset, receiveAmount, price);
   }
@@ -295,11 +329,11 @@ contract Sap is Ownable, ERC20 {
    * @param sellAmount the amount of sap to sell
    * @param token the token to get out
    */
-  function getSellAmount(
+  function getReceiveAmount(
     uint256 sellAmount,
     address token
   ) public view returns (uint256) {
-    (, uint256 receiveAmount, ) = _getSellAmount(sellAmount, token);
+    (, uint256 receiveAmount, ) = _getReceiveAmount(sellAmount, token);
     return receiveAmount;
   }
 
@@ -310,15 +344,46 @@ contract Sap is Ownable, ERC20 {
    * @return the amount of token received
    */
   function sell(uint256 sellAmount, address token) external returns (uint256) {
-    (Asset memory asset, uint256 receiveAmount, uint256 price) = _getSellAmount(
-      sellAmount,
-      token
-    );
+    (
+      Asset memory asset,
+      uint256 receiveAmount,
+      uint256 price
+    ) = _getReceiveAmount(sellAmount, token);
     _burn(msg.sender, sellAmount);
     IERC20 tc = IERC20(asset.token);
     tc.transfer(msg.sender, receiveAmount);
     emit Sell(msg.sender, sellAmount, price);
     return receiveAmount;
+  }
+
+  function _getSellAmount(
+    uint256 receiveAmount,
+    address token
+  ) internal view returns (Asset memory, uint256, uint256) {
+    // sap price
+    uint256 price = getPrice();
+    // asset price
+    Asset memory asset = _getAssetByToken(token);
+    uint256 assetPrice = _getAssetPrice(asset, decimals());
+    uint256 sellAmount = Math.mulDiv(
+      Math.mulDiv(receiveAmount, 10 ** decimals(), 10 ** asset.decimals),
+      assetPrice,
+      price
+    );
+    return (asset, sellAmount, price);
+  }
+
+  /**
+   * @dev get the amount of sap will sell
+   * @param receiveAmount the amount of token to receive
+   * @param token the token to get out
+   */
+  function getSellAmount(
+    uint256 receiveAmount,
+    address token
+  ) public view returns (uint256) {
+    (, uint256 sellAmount, ) = _getSellAmount(receiveAmount, token);
+    return sellAmount;
   }
 
   function claimAllGas() external onlyOwner {

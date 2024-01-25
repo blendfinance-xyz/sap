@@ -14,7 +14,7 @@ import { ethers } from "hardhat";
 // all time on chain is in second
 const DAY_MULTIPLIER = 24 * 60 * 60;
 
-function n2b(n: number, decimals: number | bigint): bigint {
+export function n2b(n: number, decimals: number | bigint): bigint {
   const ns = n.toString();
   let [int, dec] = ns.split(".");
   if (int === "0") int = "";
@@ -27,7 +27,7 @@ function n2b(n: number, decimals: number | bigint): bigint {
   return BigInt(`${int}${dec}`);
 }
 
-function b2n(b: bigint, decimals: number | bigint): number {
+export function b2n(b: bigint, decimals: number | bigint): number {
   const bs = b.toString();
   if (bs.length <= Number(decimals)) {
     return parseFloat(`0.${bs.padStart(Number(decimals), "0")}`);
@@ -38,8 +38,8 @@ function b2n(b: bigint, decimals: number | bigint): number {
   }
 }
 
-function assertNumber(a: number, b: number, msg?: string) {
-  assert(Math.abs(a - b) < 0.001, msg);
+export function assertNumber(a: number, b: number, msg?: string) {
+  assert(Math.abs(a - b) < 0.001, `${msg ?? ""} ${a} != ${b}`);
 }
 
 async function deploy() {
@@ -361,54 +361,6 @@ describe("business test", () => {
       /Sap: already initialized/,
     );
   });
-  test("should be right price", async () => {
-    const {
-      usdc,
-      btc,
-      weth,
-      bnb,
-      sol,
-      joey,
-      sap,
-      pyth,
-      pythPriceIds,
-      uniswapRouter02,
-    } = await init();
-    const decimals = await sap.decimals();
-    const address = await sap.getAddress();
-    const contracts = [usdc, btc, weth, bnb, sol, joey];
-    const priceIds = [
-      pythPriceIds.usdc,
-      pythPriceIds.btc,
-      pythPriceIds.weth,
-      pythPriceIds.bnb,
-      pythPriceIds.sol,
-    ];
-    let volumn = 0;
-    for (let i = 0; i < contracts.length; i++) {
-      const c = contracts[i];
-      const assetDecimals = await c.decimals();
-      const price: number = await (async function (id?: string) {
-        if (!id) {
-          const price = await uniswapRouter02.getAmountsOut(
-            n2b(1, assetDecimals),
-            [await c.getAddress(), await usdc.getAddress()],
-          );
-          return b2n(price[1], assetDecimals);
-        } else {
-          const p = await pyth.getPrice(id);
-          return b2n(p[0], p[2] * -1n);
-        }
-      })(priceIds[i]);
-      const amount = await c.balanceOf(address);
-      volumn += b2n(amount, assetDecimals) * price;
-    }
-    // check sap price
-    const price = await sap.getPrice();
-    const totalSupply = await sap.totalSupply();
-    const jsPrice = volumn / b2n(totalSupply, decimals);
-    assertNumber(jsPrice, b2n(price, decimals), "sap price is not right");
-  });
   test("should buy right", async () => {
     const { otherAccount, usdc, sap } = await init();
     const address = await sap.getAddress();
@@ -467,6 +419,130 @@ describe("business test", () => {
       totalSupplyAfterSell,
       totalSupplyBeforeSell - sellAmount,
       "sap total supply after sell is not right",
+    );
+  });
+});
+
+describe("price test", () => {
+  async function init() {
+    const {
+      owner,
+      usdc,
+      btc,
+      weth,
+      bnb,
+      sol,
+      joey,
+      sap,
+      sapInitAmount,
+      ...rest
+    } = await loadFixture(deploy);
+    const sapAddress = await sap.getAddress();
+    await usdc.approve(sapAddress, sapInitAmount.usdc);
+    await btc.approve(sapAddress, sapInitAmount.btc);
+    await weth.approve(sapAddress, sapInitAmount.weth);
+    await bnb.approve(sapAddress, sapInitAmount.bnb);
+    await sol.approve(sapAddress, sapInitAmount.sol);
+    await joey.approve(sapAddress, sapInitAmount.joey);
+    await sap.init(
+      [
+        sapInitAmount.usdc,
+        sapInitAmount.btc,
+        sapInitAmount.weth,
+        sapInitAmount.bnb,
+        sapInitAmount.sol,
+        sapInitAmount.joey,
+      ],
+      sapInitAmount.sap,
+    );
+    return {
+      owner,
+      usdc,
+      btc,
+      weth,
+      bnb,
+      sol,
+      joey,
+      sap,
+      sapInitAmount,
+      ...rest,
+    };
+  }
+  test("should be right price", async () => {
+    const {
+      usdc,
+      btc,
+      weth,
+      bnb,
+      sol,
+      joey,
+      sap,
+      pyth,
+      pythPriceIds,
+      uniswapRouter02,
+    } = await init();
+    const decimals = await sap.decimals();
+    const address = await sap.getAddress();
+    const contracts = [usdc, btc, weth, bnb, sol, joey];
+    const priceIds = [
+      pythPriceIds.usdc,
+      pythPriceIds.btc,
+      pythPriceIds.weth,
+      pythPriceIds.bnb,
+      pythPriceIds.sol,
+    ];
+    let volumn = 0;
+    for (let i = 0; i < contracts.length; i++) {
+      const c = contracts[i];
+      const assetDecimals = await c.decimals();
+      const price: number = await (async function (id?: string) {
+        if (!id) {
+          const price = await uniswapRouter02.getAmountsOut(
+            n2b(1, assetDecimals),
+            [await c.getAddress(), await usdc.getAddress()],
+          );
+          return b2n(price[1], assetDecimals);
+        } else {
+          const p = await pyth.getPrice(id);
+          return b2n(p[0], p[2] * -1n);
+        }
+      })(priceIds[i]);
+      const amount = await c.balanceOf(address);
+      volumn += b2n(amount, assetDecimals) * price;
+    }
+    // check sap price
+    const price = await sap.getPrice();
+    const totalSupply = await sap.totalSupply();
+    const jsPrice = volumn / b2n(totalSupply, decimals);
+    assertNumber(jsPrice, b2n(price, decimals), "sap price is not right");
+  });
+  test("should be right buy amount", async () => {
+    const { sap, usdc } = await init();
+    const usdcAddress = await usdc.getAddress();
+    const usdcDecimals = await usdc.decimals();
+    const payAmount = n2b(100, usdcDecimals);
+    const buyAmount = await sap.getBuyAmount(payAmount, usdcAddress);
+    const resPayAmount = await sap.getPayAmount(buyAmount, usdcAddress);
+    assertNumber(
+      b2n(payAmount, usdcDecimals),
+      b2n(resPayAmount, usdcDecimals),
+      "sap pay amount is not right",
+    );
+  });
+  test("should be right sell amount", async () => {
+    const { sap, usdc } = await init();
+    const usdcAddress = await usdc.getAddress();
+    const usdcDecimals = await usdc.decimals();
+    const receiveAmount = n2b(100, usdcDecimals);
+    const sellAmount = await sap.getSellAmount(receiveAmount, usdcAddress);
+    const resReceiveAmount = await sap.getReceiveAmount(
+      sellAmount,
+      usdcAddress,
+    );
+    assertNumber(
+      b2n(receiveAmount, usdcDecimals),
+      b2n(resReceiveAmount, usdcDecimals),
+      "sap sell amount is not right",
     );
   });
 });
