@@ -437,7 +437,7 @@ describe("business test", () => {
       "sap total supply after buy is not right",
     );
   });
-  test("shoul sell right", async () => {
+  test("should sell right", async () => {
     const { otherAccount, usdc, sap } = await init();
     const address = await sap.getAddress();
     // do buy
