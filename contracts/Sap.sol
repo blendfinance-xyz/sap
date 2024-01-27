@@ -58,11 +58,19 @@ contract Sap is Ownable, ERC20 {
   }
 
   /**
-   * @dev get the pyth address
+   * @dev pyth address
    * @return the pyth address
    */
-  function getPyth() public view returns (address) {
-    return address(_pyth);
+  function pyth() public view returns (address) {
+    return _pyth;
+  }
+
+  /**
+   * @dev uniswap router address
+   * @return the uniswap router address
+   */
+  function uniswapRouter() public view returns (address) {
+    return _uniswapRouter;
   }
 
   function _getAssetByToken(

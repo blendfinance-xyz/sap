@@ -191,6 +191,22 @@ describe("deploy test", () => {
     const { owner, sap } = await loadFixture(deploy);
     strictEqual(await sap.owner(), owner.address, "sap owner is not right");
   });
+  test("should be right pyth", async () => {
+    const { sap, pyth } = await loadFixture(deploy);
+    strictEqual(
+      await sap.pyth(),
+      await pyth.getAddress(),
+      "pyth address not right",
+    );
+  });
+  test("should be right uniswap router", async () => {
+    const { sap, uniswapRouter02 } = await loadFixture(deploy);
+    strictEqual(
+      await sap.uniswapRouter(),
+      await uniswapRouter02.getAddress(),
+      "uniswap router address not right",
+    );
+  });
   test("should be right token", async () => {
     const { usdc, btc, weth, bnb, sol, joey, sap } = await loadFixture(deploy);
     strictEqual(
