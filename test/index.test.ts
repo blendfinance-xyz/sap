@@ -133,10 +133,12 @@ async function deploy() {
     sap: n2b(100, 18),
     joey: n2b(100, await joey.decimals()),
   };
+  const feeRate = 0.06;
   const Sap: ContractFactory = await ethers.getContractFactory("Sap");
   const sap = (await Sap.deploy(
     "Sap",
     "SAP",
+    n2b(feeRate, 6),
     await pyth.getAddress(),
     await uniswapRouter02.getAddress(),
     [
@@ -181,6 +183,7 @@ async function deploy() {
     pyth,
     uniswapFactory,
     uniswapRouter02,
+    feeRate,
     sap,
     sapInitAmount,
   };
@@ -190,6 +193,14 @@ describe("deploy test", () => {
   test("should be right owner", async () => {
     const { owner, sap } = await loadFixture(deploy);
     strictEqual(await sap.owner(), owner.address, "sap owner is not right");
+  });
+  test("should be right fee rate", async () => {
+    const { feeRate, sap } = await loadFixture(deploy);
+    assertNumber(
+      b2n(await sap.feeRate(), 6),
+      feeRate,
+      "profit fee rate is not right",
+    );
   });
   test("should be right pyth", async () => {
     const { sap, pyth } = await loadFixture(deploy);
@@ -377,6 +388,20 @@ describe("business test", () => {
       /Sap: already initialized/,
     );
   });
+  test("should be set fee rate", async () => {
+    const { sap } = await init();
+    const feeRate = 0.1;
+    await sap.setFeeRate(n2b(feeRate, 6));
+    strictEqual(b2n(await sap.feeRate(), 6), feeRate, "fee rate is not right");
+  });
+  test("should not set fee rate by other", async () => {
+    const { otherAccount, sap } = await init();
+    const feeRate = 0.1;
+    await assert.rejects(
+      sap.connect(otherAccount).setFeeRate(n2b(feeRate, 6)),
+      /OwnableUnauthorizedAccount/,
+    );
+  });
   test("should buy right", async () => {
     const { otherAccount, usdc, sap } = await init();
     const address = await sap.getAddress();
@@ -388,7 +413,7 @@ describe("business test", () => {
     const payAmount = n2b(1, await usdc.decimals());
     const buyAmount = (payAmount * assetPrice) / priceBeforeBuy;
     await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
-    await sap.connect(otherAccount).buy(payAmount, await usdc.getAddress());
+    await sap.connect(otherAccount).buy(payAmount, 0);
     // check
     const amountAfterBuy = await sap.balanceOf(otherAccount.address);
     strictEqual(amountAfterBuy, buyAmount, "sap amount after buy is not right");
@@ -411,7 +436,7 @@ describe("business test", () => {
     // do buy
     const payAmount = n2b(1, await usdc.decimals());
     await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
-    await sap.connect(otherAccount).buy(payAmount, await usdc.getAddress());
+    await sap.connect(otherAccount).buy(payAmount, 0);
     // get values before sell
     const priceBeforeSell = await sap.getPrice();
     const assetPrice = await sap.getAssetPrice(0);
@@ -420,7 +445,7 @@ describe("business test", () => {
     // do sell
     const sellAmount = await sap.balanceOf(otherAccount.address);
     const receiveAmount = (sellAmount * priceBeforeSell) / assetPrice;
-    await sap.connect(otherAccount).sell(sellAmount, await usdc.getAddress());
+    await sap.connect(otherAccount).sell(sellAmount, 0);
     // check
     const amountAfterSell = await sap.balanceOf(otherAccount.address);
     strictEqual(amountAfterSell, 0n, "sap amount after sell is not right");
@@ -545,20 +570,61 @@ describe("price test", () => {
       "sap pay amount is not right",
     );
   });
-  test("should be right sell amount", async () => {
-    const { sap, usdc } = await init();
-    const usdcAddress = await usdc.getAddress();
+  test("should be right hold price", async () => {
+    const { otherAccount, sap, usdc } = await init();
+    const amountBeforeBuy = await sap.balanceOf(otherAccount.address);
+    strictEqual(amountBeforeBuy, 0n, "amount before buy is not right");
     const usdcDecimals = await usdc.decimals();
-    const receiveAmount = n2b(100, usdcDecimals);
-    const sellAmount = await sap.getSellAmount(receiveAmount, usdcAddress);
-    const resReceiveAmount = await sap.getReceiveAmount(
+    const payAmount = n2b(100, usdcDecimals);
+    const sapPrice1 = await sap.getPrice();
+    await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
+    await sap.connect(otherAccount).buy(payAmount, 0);
+    strictEqual(
+      sapPrice1,
+      await sap.getHoldPrice(otherAccount.address),
+      "hold price is not right",
+    );
+    const sapPrice2 = await sap.getPrice();
+    await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
+    await sap.connect(otherAccount).buy(payAmount, 0);
+    const jsHoldPrice =
+      (sapPrice1 * payAmount + sapPrice2 * payAmount) / (payAmount * 2n);
+    strictEqual(
+      jsHoldPrice,
+      await sap.getHoldPrice(otherAccount.address),
+      "hold price is not right",
+    );
+  });
+  test("should be right sell amount", async () => {
+    const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds, feeRate } =
+      await init();
+    const usdcAddress = await usdc.getAddress();
+    const decimals = await sap.decimals();
+    const so = sap.connect(otherAccount);
+    const usdcDecimals = await usdc.decimals();
+    // buy
+    const payAmount = n2b(100, usdcDecimals);
+    await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
+    await so.buy(payAmount, 0);
+    const holdPrice = await sap.getHoldPrice(otherAccount.address);
+    // update price
+    await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 1.1, 6), -6);
+    const newPrice = await sap.getPrice();
+    // sell
+    const sellAmount = await sap.balanceOf(otherAccount.address);
+    const receiveAmount = await sap.getReceiveAmount(
       sellAmount,
       usdcAddress,
+      holdPrice,
     );
+    const usdcPrice = await sap.getAssetPrice(0);
+    const jsReceiveAmount =
+      b2n(((newPrice - holdPrice) * sellAmount) / usdcPrice, decimals) *
+      (1 - feeRate);
     assertNumber(
-      b2n(receiveAmount, usdcDecimals),
-      b2n(resReceiveAmount, usdcDecimals),
-      "sap sell amount is not right",
+      b2n(receiveAmount - payAmount, usdcDecimals),
+      jsReceiveAmount,
+      "sap receive amount is not right",
     );
   });
 });

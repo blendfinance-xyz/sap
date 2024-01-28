@@ -15,6 +15,7 @@ contract Sap is Ownable, ERC20 {
     address token;
     bytes32 pythPriceId;
     uint8 decimals;
+    uint256 feeAmount;
   }
 
   struct InitAsset {
@@ -26,10 +27,18 @@ contract Sap is Ownable, ERC20 {
   address private _uniswapRouter;
   Asset[] private _assets;
   bool private _initialized = false;
+  mapping(address => uint256) private _holdPrices;
+  uint256 private _feeRate;
+  uint256 FEE_RATE_DIVIDER = 10 ** 6;
 
   event Init(uint256 amount, uint256 price);
   event Buy(address indexed account, uint256 amount, uint256 price);
   event Sell(address indexed account, uint256 amount, uint256 price);
+
+  modifier checkInitialized() {
+    require(_initialized, "Sap: not initialized");
+    _;
+  }
 
   /**
    * @notice the first asset must be usdt or usdc
@@ -38,10 +47,12 @@ contract Sap is Ownable, ERC20 {
   constructor(
     string memory name_,
     string memory symbol_,
+    uint256 feeRate_,
     address pyth_,
     address uniswapRouter_,
     InitAsset[] memory assets_
   ) Ownable(msg.sender) ERC20(name_, symbol_) {
+    _feeRate = feeRate_;
     _pyth = pyth_;
     _uniswapRouter = uniswapRouter_;
     for (uint256 i = 0; i < assets_.length; i++) {
@@ -49,7 +60,8 @@ contract Sap is Ownable, ERC20 {
         Asset({
           token: assets_[i].token,
           pythPriceId: assets_[i].pythPriceId,
-          decimals: ERC20(assets_[i].token).decimals()
+          decimals: ERC20(assets_[i].token).decimals(),
+          feeAmount: 0
         })
       );
     }
@@ -103,6 +115,51 @@ contract Sap is Ownable, ERC20 {
   }
 
   /**
+   * @dev get hold price of the account
+   * @param account account, could be user or contract
+   * @return the hold price
+   */
+  function getHoldPrice(address account) public view returns (uint256) {
+    return _holdPrices[account];
+  }
+
+  function _updateHoldPrice(
+    address account,
+    uint256 amount,
+    uint256 price
+  ) internal returns (uint256) {
+    uint256 holdAmount = balanceOf(account);
+    _holdPrices[account] = _safeDiv(
+      _safeAdd(
+        _safeMul(_holdPrices[account], holdAmount),
+        _safeMul(price, amount)
+      ),
+      _safeAdd(holdAmount, amount)
+    );
+    return _holdPrices[account];
+  }
+
+  /**
+   * @dev get the fee rate
+   * @return the fee rate
+   */
+  function feeRate() public view returns (uint256) {
+    return _feeRate;
+  }
+
+  /**
+   * @dev set the fee rate
+   * @param feeRate_ the fee rate
+   */
+  function setFeeRate(uint256 feeRate_) external onlyOwner {
+    _feeRate = feeRate_;
+  }
+
+  function _getFee(uint256 amount) internal view returns (uint256) {
+    return Math.mulDiv(amount, _feeRate, FEE_RATE_DIVIDER);
+  }
+
+  /**
    * @dev initialize the pool
    * @notice this function should be called only once
    * @param amounts_ the amounts of the assets
@@ -118,6 +175,7 @@ contract Sap is Ownable, ERC20 {
     }
     _mint(msg.sender, amount_);
     _initialized = true;
+    _holdPrices[msg.sender] = getPrice();
     emit Init(getPrice(), amount_);
   }
 
@@ -126,9 +184,6 @@ contract Sap is Ownable, ERC20 {
     uint8 targetDecimals
   ) internal view returns (uint256) {
     PythStructs.Price memory price = IPyth(_pyth).getPrice(asset.pythPriceId);
-    require(price.price > 0, "SAP: invalid price");
-    require(price.expo < 0, "SAP: invalid price expo");
-    require(price.expo > -255, "SAP: invalid price expo");
     uint8 priceDecimals = uint8(uint32(-1 * price.expo));
     if (priceDecimals >= targetDecimals) {
       return
@@ -186,24 +241,42 @@ contract Sap is Ownable, ERC20 {
     return _getAssetPrice(_assets[index], decimals());
   }
 
+  function _getAssetValue(
+    Asset memory asset
+  ) internal view returns (uint256, uint256) {
+    uint256 price = _getAssetPrice(asset, decimals());
+    uint256 balance = Math.mulDiv(
+      _safeSub(IERC20(asset.token).balanceOf(address(this)), asset.feeAmount),
+      10 ** decimals(),
+      10 ** asset.decimals
+    );
+    return (_safeMul(price, balance), price);
+  }
+
+  function _getPrice(
+    uint256 index
+  ) internal view returns (uint256, Asset memory asset, uint256) {
+    Asset memory a;
+    uint256 assetPrice;
+    uint256 volumn = 0;
+    for (uint256 i = 0; i < _assets.length; i++) {
+      Asset memory aa = _assets[i];
+      (uint256 assetValue, uint256 ap) = _getAssetValue(aa);
+      volumn = _safeAdd(volumn, assetValue);
+      if (i == index) {
+        a = aa;
+        assetPrice = ap;
+      }
+    }
+    return (_safeDiv(volumn, totalSupply()), a, assetPrice);
+  }
+
   /**
    * @dev get the price of the pool, the price has same decimals with sap
    */
-  function getPrice() public view returns (uint256) {
-    require(_initialized, "Sap: not initialized");
-    uint256 volumn = 0;
-    for (uint256 i = 0; i < _assets.length; i++) {
-      Asset memory asset = _assets[i];
-      uint256 assetPrice = _getAssetPrice(asset, decimals());
-      IERC20 tc = IERC20(asset.token);
-      uint256 assetBalance = Math.mulDiv(
-        tc.balanceOf(address(this)),
-        10 ** decimals(),
-        10 ** asset.decimals
-      );
-      volumn += _safeMul(assetPrice, assetBalance);
-    }
-    return _safeDiv(volumn, totalSupply());
+  function getPrice() public view checkInitialized returns (uint256) {
+    (uint256 price, , ) = _getPrice(0);
+    return price;
   }
 
   /**
@@ -216,8 +289,7 @@ contract Sap is Ownable, ERC20 {
     address router_,
     uint256 amountIn,
     address[] memory path
-  ) external onlyOwner {
-    require(_initialized, "Sap: not initialized");
+  ) external onlyOwner checkInitialized {
     IUniswapV2Router02 router = IUniswapV2Router02(router_);
     Asset memory assetIn = _getAssetByToken(path[0]);
     IERC20 tc = IERC20(assetIn.token);
@@ -236,14 +308,10 @@ contract Sap is Ownable, ERC20 {
 
   function _getBuyAmount(
     uint256 payAmount,
-    address token
-  ) internal view returns (Asset memory, uint256, uint256) {
-    require(_initialized, "Sap: not initialized");
+    uint256 index
+  ) internal view checkInitialized returns (Asset memory, uint256, uint256) {
     // sap price
-    uint256 price = getPrice();
-    // asset price
-    Asset memory asset = _getAssetByToken(token);
-    uint256 assetPrice = _getAssetPrice(asset, decimals());
+    (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
     uint256 buyAmount = Math.mulDiv(
       Math.mulDiv(payAmount, 10 ** decimals(), 10 ** asset.decimals),
       assetPrice,
@@ -261,23 +329,28 @@ contract Sap is Ownable, ERC20 {
     uint256 payAmount,
     address token
   ) public view returns (uint256) {
-    (, uint256 buyAmount, ) = _getBuyAmount(payAmount, token);
-    return buyAmount;
+    for (uint256 i = 0; i < _assets.length; i++) {
+      if (_assets[i].token == token) {
+        (, uint256 buyAmount, ) = _getBuyAmount(payAmount, i);
+        return buyAmount;
+      }
+    }
+    return 0;
   }
 
   /**
    * @dev buy sap, could put in any token in the pool
    * @param payAmount the amount of token to pay
-   * @param token the token to pay
+   * @param index the index of the asset
    * @return the amount has bought
    */
-  function buy(uint256 payAmount, address token) external returns (uint256) {
+  function buy(uint256 payAmount, uint256 index) external returns (uint256) {
     (Asset memory asset, uint256 buyAmount, uint256 price) = _getBuyAmount(
       payAmount,
-      token
+      index
     );
-    IERC20 tc = IERC20(asset.token);
-    tc.transferFrom(msg.sender, address(this), payAmount);
+    _updateHoldPrice(msg.sender, buyAmount, price);
+    IERC20(asset.token).transferFrom(msg.sender, address(this), payAmount);
     _mint(msg.sender, buyAmount);
     emit Buy(msg.sender, buyAmount, price);
     return buyAmount;
@@ -285,14 +358,10 @@ contract Sap is Ownable, ERC20 {
 
   function _getPayAmount(
     uint256 buyAmount,
-    address token
-  ) internal view returns (Asset memory, uint256, uint256) {
-    require(_initialized, "Sap: not initialized");
+    uint256 index
+  ) internal view checkInitialized returns (Asset memory, uint256, uint256) {
     // sap price
-    uint256 price = getPrice();
-    // asset price
-    Asset memory asset = _getAssetByToken(token);
-    uint256 assetPrice = _getAssetPrice(asset, decimals());
+    (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
     uint256 payAmount = Math.mulDiv(
       Math.mulDiv(buyAmount, 10 ** asset.decimals, 10 ** decimals()),
       price,
@@ -310,26 +379,40 @@ contract Sap is Ownable, ERC20 {
     uint256 buyAmount,
     address token
   ) public view returns (uint256) {
-    (, uint256 payAmount, ) = _getPayAmount(buyAmount, token);
-    return payAmount;
+    for (uint256 i = 0; i < _assets.length; i++) {
+      if (_assets[i].token == token) {
+        (, uint256 payAmount, ) = _getPayAmount(buyAmount, i);
+        return payAmount;
+      }
+    }
+    return 0;
   }
 
   function _getReceiveAmount(
     uint256 sellAmount,
-    address token
-  ) internal view returns (Asset memory, uint256, uint256) {
-    require(_initialized, "Sap: not initialized");
+    uint256 index,
+    uint256 holdPrice
+  )
+    internal
+    view
+    checkInitialized
+    returns (Asset memory, uint256, uint256, uint256)
+  {
     // sap price
-    uint256 price = getPrice();
-    // asset price
-    Asset memory asset = _getAssetByToken(token);
-    uint256 assetPrice = _getAssetPrice(asset, decimals());
+    (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
+    // profit fee
+    uint256 fee = 0;
+    if (holdPrice <= price) {
+      fee = _getFee(
+        Math.mulDiv(_safeSub(price, holdPrice), sellAmount, assetPrice)
+      );
+    }
     uint256 receiveAmount = Math.mulDiv(
       Math.mulDiv(sellAmount, 10 ** asset.decimals, 10 ** decimals()),
       price,
       assetPrice
     );
-    return (asset, receiveAmount, price);
+    return (asset, _safeSub(receiveAmount, fee), price, fee);
   }
 
   /**
@@ -339,46 +422,64 @@ contract Sap is Ownable, ERC20 {
    */
   function getReceiveAmount(
     uint256 sellAmount,
-    address token
+    address token,
+    uint256 holdPrice
   ) public view returns (uint256) {
-    (, uint256 receiveAmount, ) = _getReceiveAmount(sellAmount, token);
-    return receiveAmount;
+    for (uint256 i = 0; i < _assets.length; i++) {
+      if (_assets[i].token == token) {
+        (, uint256 receiveAmount, , ) = _getReceiveAmount(
+          sellAmount,
+          i,
+          holdPrice
+        );
+        return receiveAmount;
+      }
+    }
+    return 0;
   }
 
   /**
    * @dev sell sap, could get out any token in the pool
    * @param sellAmount the amount of sap to sell
-   * @param token the token to get out
+   * @param index the index of the asset
    * @return the amount of token received
    */
-  function sell(uint256 sellAmount, address token) external returns (uint256) {
+  function sell(uint256 sellAmount, uint256 index) external returns (uint256) {
     (
       Asset memory asset,
       uint256 receiveAmount,
-      uint256 price
-    ) = _getReceiveAmount(sellAmount, token);
+      uint256 price,
+      uint256 fee
+    ) = _getReceiveAmount(sellAmount, index, _holdPrices[msg.sender]);
+    _assets[index].feeAmount = _safeAdd(_assets[index].feeAmount, fee);
     _burn(msg.sender, sellAmount);
-    IERC20 tc = IERC20(asset.token);
-    tc.transfer(msg.sender, receiveAmount);
+    IERC20(asset.token).transfer(msg.sender, receiveAmount);
     emit Sell(msg.sender, sellAmount, price);
     return receiveAmount;
   }
 
   function _getSellAmount(
     uint256 receiveAmount,
-    address token
-  ) internal view returns (Asset memory, uint256, uint256) {
+    uint256 index,
+    uint256 holdPrice
+  ) internal view returns (Asset memory, uint256, uint256, uint256) {
     // sap price
-    uint256 price = getPrice();
-    // asset price
-    Asset memory asset = _getAssetByToken(token);
-    uint256 assetPrice = _getAssetPrice(asset, decimals());
-    uint256 sellAmount = Math.mulDiv(
-      Math.mulDiv(receiveAmount, 10 ** decimals(), 10 ** asset.decimals),
-      assetPrice,
-      price
-    );
-    return (asset, sellAmount, price);
+    (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
+    if (holdPrice > price) {
+      uint256 sellAmount = Math.mulDiv(
+        Math.mulDiv(receiveAmount, 10 ** decimals(), 10 ** asset.decimals),
+        assetPrice,
+        price
+      );
+      return (asset, sellAmount, price, 0);
+    } else {
+      uint256 sellAmount = _safeDiv(
+        receiveAmount,
+        _safeAdd(_safeDiv(price, assetPrice), _safeSub(price, holdPrice))
+      );
+      uint256 fee = _getFee(_safeMul(_safeSub(price, holdPrice), sellAmount));
+      return (asset, sellAmount, price, fee);
+    }
   }
 
   /**
@@ -388,10 +489,28 @@ contract Sap is Ownable, ERC20 {
    */
   function getSellAmount(
     uint256 receiveAmount,
-    address token
+    address token,
+    uint256 holdPrice
   ) public view returns (uint256) {
-    (, uint256 sellAmount, ) = _getSellAmount(receiveAmount, token);
-    return sellAmount;
+    for (uint256 i = 0; i < _assets.length; i++) {
+      if (_assets[i].token == token) {
+        (, uint256 sellAmount, , ) = _getSellAmount(
+          receiveAmount,
+          i,
+          holdPrice
+        );
+        return sellAmount;
+      }
+    }
+    return 0;
+  }
+
+  function claimAllFee() external onlyOwner {
+    for (uint256 i = 0; i < _assets.length; i++) {
+      Asset memory asset = _assets[i];
+      IERC20(asset.token).transfer(msg.sender, asset.feeAmount);
+      asset.feeAmount = 0;
+    }
   }
 
   function claimAllGas() external onlyOwner {
@@ -402,33 +521,25 @@ contract Sap is Ownable, ERC20 {
   }
 
   function _safeAdd(uint256 a, uint256 b) internal pure returns (uint256) {
-    bool isMathSafe = false;
-    uint256 c = 0;
-    (isMathSafe, c) = Math.tryAdd(a, b);
+    (bool isMathSafe, uint256 c) = Math.tryAdd(a, b);
     require(isMathSafe, "Sap: math error");
     return c;
   }
 
   function _safeSub(uint256 a, uint256 b) internal pure returns (uint256) {
-    bool isMathSafe = false;
-    uint256 c = 0;
-    (isMathSafe, c) = Math.trySub(a, b);
+    (bool isMathSafe, uint256 c) = Math.trySub(a, b);
     require(isMathSafe, "Sap: math error");
     return c;
   }
 
   function _safeMul(uint256 a, uint256 b) internal pure returns (uint256) {
-    bool isMathSafe = false;
-    uint256 c = 0;
-    (isMathSafe, c) = Math.tryMul(a, b);
+    (bool isMathSafe, uint256 c) = Math.tryMul(a, b);
     require(isMathSafe, "Sap: math error");
     return c;
   }
 
   function _safeDiv(uint256 a, uint256 b) internal pure returns (uint256) {
-    bool isMathSafe = false;
-    uint256 c = 0;
-    (isMathSafe, c) = Math.tryDiv(a, b);
+    (bool isMathSafe, uint256 c) = Math.tryDiv(a, b);
     require(isMathSafe, "Sap: math error");
     return c;
   }
