@@ -462,6 +462,13 @@ describe("business test", () => {
       "sap total supply after sell is not right",
     );
   });
+  test("should swap right", async () => {
+    const { sap, usdc, joey } = await init();
+    await sap.swap(n2b(0.1, await usdc.decimals()), [
+      await usdc.getAddress(),
+      await joey.getAddress(),
+    ]);
+  });
 });
 
 describe("price test", () => {

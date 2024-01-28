@@ -281,19 +281,17 @@ contract Sap is Ownable, ERC20 {
 
   /**
    * @dev swap tokenIn to tokenOut
-   * @param router_ uniswap router
    * @param amountIn the amount of tokenIn
    * @param path the path of swap
    */
   function swap(
-    address router_,
     uint256 amountIn,
     address[] memory path
   ) external onlyOwner checkInitialized {
-    IUniswapV2Router02 router = IUniswapV2Router02(router_);
+    IUniswapV2Router02 router = IUniswapV2Router02(_uniswapRouter);
     Asset memory assetIn = _getAssetByToken(path[0]);
     IERC20 tc = IERC20(assetIn.token);
-    tc.approve(router_, amountIn);
+    tc.approve(_uniswapRouter, amountIn);
     // avoid swap to token not in assets
     _getAssetByToken(path[path.length - 1]);
     // do swap
