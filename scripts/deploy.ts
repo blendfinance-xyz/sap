@@ -1,8 +1,13 @@
 // @ts-ignore
 import { ethers } from "hardhat";
 
-async function main() {
-  // deploy sap
+async function feeDiscount() {
+  const feeDiscount = await ethers.deployContract("FeeDiscount");
+  await feeDiscount.waitForDeployment();
+  console.log("FeeDiscount deployed to", feeDiscount.target);
+}
+
+async function sap() {
   const sap = await ethers.deployContract("Sap", [
     "Sap",
     "SAP",
@@ -14,7 +19,7 @@ async function main() {
       "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
       "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
       "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
-      "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729"
+      "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
     ],
     // https://pyth.network/developers/price-feed-ids#pyth-evm-stable
     [
@@ -23,11 +28,18 @@ async function main() {
       "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
       "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
       "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
-      "0x0000000000000000000000000000000000000000000000000000000000000000"
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
     ],
   ]);
   await sap.waitForDeployment();
   console.log("Sap deployed to", sap.target);
+}
+
+async function main() {
+  // deploy fee discount
+  await feeDiscount();
+  // deploy sap
+  // await sap();
 }
 
 // We recommend this pattern to be able to use async/await everywhere

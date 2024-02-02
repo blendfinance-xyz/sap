@@ -121,6 +121,17 @@ contract Sap is Ownable, ERC20 {
     revert("Sap: asset not found");
   }
 
+  function _getAssetIndexByToken(
+    address token
+  ) internal view returns (uint256) {
+    for (uint256 i = 0; i < _assets.length; i++) {
+      if (address(_assets[i].token) == token) {
+        return i;
+      }
+    }
+    revert("Sap: asset not found");
+  }
+
   /**
    * @dev get the asset token address
    * @param index the index of the asset
@@ -349,13 +360,11 @@ contract Sap is Ownable, ERC20 {
     uint256 payAmount,
     address token
   ) public view returns (uint256) {
-    for (uint256 i = 0; i < _assets.length; i++) {
-      if (address(_assets[i].token) == token) {
-        (, uint256 buyAmount, ) = _getBuyAmount(payAmount, i);
-        return buyAmount;
-      }
-    }
-    return 0;
+    (, uint256 buyAmount, ) = _getBuyAmount(
+      payAmount,
+      _getAssetIndexByToken(token)
+    );
+    return buyAmount;
   }
 
   /**
@@ -399,13 +408,11 @@ contract Sap is Ownable, ERC20 {
     uint256 buyAmount,
     address token
   ) public view returns (uint256) {
-    for (uint256 i = 0; i < _assets.length; i++) {
-      if (address(_assets[i].token) == token) {
-        (, uint256 payAmount, ) = _getPayAmount(buyAmount, i);
-        return payAmount;
-      }
-    }
-    return 0;
+    (, uint256 payAmount, ) = _getPayAmount(
+      buyAmount,
+      _getAssetIndexByToken(token)
+    );
+    return payAmount;
   }
 
   function _getReceiveAmount(
@@ -445,17 +452,12 @@ contract Sap is Ownable, ERC20 {
     address token,
     uint256 holdPrice
   ) public view returns (uint256) {
-    for (uint256 i = 0; i < _assets.length; i++) {
-      if (address(_assets[i].token) == token) {
-        (, uint256 receiveAmount, , ) = _getReceiveAmount(
-          sellAmount,
-          i,
-          holdPrice
-        );
-        return receiveAmount;
-      }
-    }
-    return 0;
+    (, uint256 receiveAmount, , ) = _getReceiveAmount(
+      sellAmount,
+      _getAssetIndexByToken(token),
+      holdPrice
+    );
+    return receiveAmount;
   }
 
   /**
@@ -512,17 +514,12 @@ contract Sap is Ownable, ERC20 {
     address token,
     uint256 holdPrice
   ) public view returns (uint256) {
-    for (uint256 i = 0; i < _assets.length; i++) {
-      if (address(_assets[i].token) == token) {
-        (, uint256 sellAmount, , ) = _getSellAmount(
-          receiveAmount,
-          i,
-          holdPrice
-        );
-        return sellAmount;
-      }
-    }
-    return 0;
+    (, uint256 sellAmount, , ) = _getSellAmount(
+      receiveAmount,
+      _getAssetIndexByToken(token),
+      holdPrice
+    );
+    return sellAmount;
   }
 
   function claimAllFee() external onlyOwner {
