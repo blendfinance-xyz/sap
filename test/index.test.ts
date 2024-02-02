@@ -802,16 +802,8 @@ describe("price test", () => {
     );
   });
   test("should be right sell amount", async () => {
-    const {
-      otherAccount,
-      sap,
-      usdc,
-      pyth,
-      pythPrices,
-      pythPriceIds,
-      feeRate,
-      feeDiscount,
-    } = await init();
+    const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds } =
+      await init();
     const usdcAddress = await usdc.getAddress();
     const decimals = await sap.decimals();
     const so = sap.connect(otherAccount);

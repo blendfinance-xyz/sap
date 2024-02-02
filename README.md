@@ -2,6 +2,14 @@
 
 This contract is for SAP.
 
+## Address
+
+The fee discount address is below
+
+### testnet
+
+> 0x386c86741D6976fe1225BE47Dc5d094Ad31Ba4D2
+
 ## Using
 
 ### install dependencies
