@@ -7,14 +7,16 @@ import { Token as TokenContract } from "../typechain-types/contracts/Token";
 import { Pyth as PythContract } from "../typechain-types/contracts/Pyth";
 import { UniswapV2Factory as UniswapV2FactoryContract } from "../typechain-types/contracts/UniswapV2Factory";
 import { UniswapV2Router02 as UniswapV2Router02Contract } from "../typechain-types/contracts/UniswapV2Router02";
+import { Staking as StakingContract } from "../typechain-types/contracts/Staking";
+import { FeeDiscount as FeeDiscountContract } from "../typechain-types/contracts/FeeDiscount";
 
 // @ts-ignore
 import { ethers } from "hardhat";
 
 // all time on chain is in second
-const DAY_MULTIPLIER = 24 * 60 * 60;
+const DAY_MULTIPLIER = 24n * 60n * 60n;
 
-export function n2b(n: number, decimals: number | bigint): bigint {
+function n2b(n: number, decimals: number | bigint): bigint {
   const ns = n.toString();
   let [int, dec] = ns.split(".");
   if (int === "0") int = "";
@@ -27,7 +29,7 @@ export function n2b(n: number, decimals: number | bigint): bigint {
   return BigInt(`${int}${dec}`);
 }
 
-export function b2n(b: bigint, decimals: number | bigint): number {
+function b2n(b: bigint, decimals: number | bigint): number {
   const bs = b.toString();
   if (bs.length <= Number(decimals)) {
     return parseFloat(`0.${bs.padStart(Number(decimals), "0")}`);
@@ -121,7 +123,22 @@ async function deploy() {
     n2b(1, await usdc.decimals()),
     n2b(100, await joey.decimals()),
     owner.address,
-    Math.ceil(Date.now() / 1000.0) + DAY_MULTIPLIER,
+    BigInt(Math.floor(Date.now() / 1000.0)) + DAY_MULTIPLIER,
+  );
+  // staking
+  const Staking: ContractFactory = await ethers.getContractFactory("Staking");
+  const staking = (await Staking.deploy(
+    await joey.getAddress(),
+  )) as StakingContract;
+  await staking.setRewardRate(30n * DAY_MULTIPLIER, n2b(0.1, 6));
+  // fee discount
+  const FeeDiscount: ContractFactory =
+    await ethers.getContractFactory("FeeDiscount");
+  const feeDiscount = (await FeeDiscount.deploy()) as FeeDiscountContract;
+  const dj = await joey.decimals();
+  await feeDiscount.setFeeDiscounts(
+    [n2b(2000, dj), n2b(1000, dj)],
+    [n2b(0.2, 6), n2b(0.1, 6)],
   );
   // sap
   const sapInitAmount = {
@@ -141,6 +158,8 @@ async function deploy() {
     n2b(feeRate, 6),
     await pyth.getAddress(),
     await uniswapRouter02.getAddress(),
+    await staking.getAddress(),
+    await feeDiscount.getAddress(),
     [
       {
         token: await usdc.getAddress(),
@@ -183,6 +202,8 @@ async function deploy() {
     pyth,
     uniswapFactory,
     uniswapRouter02,
+    staking,
+    feeDiscount,
     feeRate,
     sap,
     sapInitAmount,
@@ -191,8 +212,13 @@ async function deploy() {
 
 describe("deploy test", () => {
   test("should be right owner", async () => {
-    const { owner, sap } = await loadFixture(deploy);
+    const { owner, sap, feeDiscount } = await loadFixture(deploy);
     strictEqual(await sap.owner(), owner.address, "sap owner is not right");
+    strictEqual(
+      await feeDiscount.owner(),
+      owner.address,
+      "fee discount owner is not right",
+    );
   });
   test("should be right fee rate", async () => {
     const { feeRate, sap } = await loadFixture(deploy);
@@ -216,6 +242,22 @@ describe("deploy test", () => {
       await sap.uniswapRouter(),
       await uniswapRouter02.getAddress(),
       "uniswap router address not right",
+    );
+  });
+  test("should be right staking", async () => {
+    const { sap, staking } = await loadFixture(deploy);
+    strictEqual(
+      await sap.staking(),
+      await staking.getAddress(),
+      "staking address not right",
+    );
+  });
+  test("should be right fee discount", async () => {
+    const { sap, feeDiscount } = await loadFixture(deploy);
+    strictEqual(
+      await sap.feeDiscount(),
+      await feeDiscount.getAddress(),
+      "fee discount address not right",
     );
   });
   test("should be right token", async () => {
@@ -282,6 +324,48 @@ describe("deploy test", () => {
       pythPriceIds.null,
       await sap.getAssetPythPriceId(5),
       "sap pyth price id 5 is not right",
+    );
+  });
+});
+
+describe("fee discount test", () => {
+  test("should be right fee discount", async () => {
+    const { joey, feeDiscount } = await loadFixture(deploy);
+    const dj = await joey.decimals();
+    strictEqual(
+      await feeDiscount.getFeeDiscount(n2b(2000000, dj)),
+      n2b(0.2, 6),
+    );
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(2000, dj)), n2b(0.2, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(1000, dj)), n2b(0.1, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(999, dj)), 0n);
+  });
+  test("should be set fee discount", async () => {
+    const { joey, feeDiscount } = await loadFixture(deploy);
+    const dj = await joey.decimals();
+    await feeDiscount.setFeeDiscounts(
+      [n2b(3000, dj), n2b(2000, dj), n2b(1000, dj)],
+      [n2b(0.3, 6), n2b(0.25, 6), n2b(0.11, 6)],
+    );
+    strictEqual(
+      await feeDiscount.getFeeDiscount(n2b(2000000, dj)),
+      n2b(0.3, 6),
+    );
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(3000, dj)), n2b(0.3, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(2000, dj)), n2b(0.25, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(1000, dj)), n2b(0.11, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(999, dj)), 0n);
+  });
+  test("should not set fee discount by other", async () => {
+    const { otherAccount, feeDiscount } = await loadFixture(deploy);
+    await assert.rejects(
+      feeDiscount
+        .connect(otherAccount)
+        .setFeeDiscounts(
+          [n2b(3000, 18), n2b(2000, 18), n2b(1000, 18)],
+          [n2b(0.3, 6), n2b(0.25, 6), n2b(0.11, 6)],
+        ),
+      /OwnableUnauthorizedAccount/,
     );
   });
 });

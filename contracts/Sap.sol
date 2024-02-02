@@ -9,10 +9,12 @@ import { IPyth } from "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import { PythStructs } from "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import { IUniswapV2Router02 } from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import { IBlast } from "../interfaces/IBlast.sol";
+import { Staking } from "./Staking.sol";
+import { FeeDiscount } from "./FeeDiscount.sol";
 
 contract Sap is Ownable, ERC20 {
   struct Asset {
-    address token;
+    IERC20 token;
     bytes32 pythPriceId;
     uint8 decimals;
     uint256 feeAmount;
@@ -23,13 +25,15 @@ contract Sap is Ownable, ERC20 {
     bytes32 pythPriceId;
   }
 
-  address private _pyth;
-  address private _uniswapRouter;
+  IPyth private _pyth;
+  IUniswapV2Router02 private _uniswapRouter;
+  Staking private _staking;
+  FeeDiscount private _feeDiscount;
+
   Asset[] private _assets;
   bool private _initialized = false;
   mapping(address => uint256) private _holdPrices;
   uint256 private _feeRate;
-  uint256 FEE_RATE_DIVIDER = 10 ** 6;
 
   event Init(uint256 amount, uint256 price);
   event Buy(address indexed account, uint256 amount, uint256 price);
@@ -50,17 +54,22 @@ contract Sap is Ownable, ERC20 {
     uint256 feeRate_,
     address pyth_,
     address uniswapRouter_,
+    address staking_,
+    address feeDiscount_,
     InitAsset[] memory assets_
   ) Ownable(msg.sender) ERC20(name_, symbol_) {
     _feeRate = feeRate_;
-    _pyth = pyth_;
-    _uniswapRouter = uniswapRouter_;
+    _pyth = IPyth(pyth_);
+    _uniswapRouter = IUniswapV2Router02(uniswapRouter_);
+    _staking = Staking(staking_);
+    _feeDiscount = FeeDiscount(feeDiscount_);
     for (uint256 i = 0; i < assets_.length; i++) {
+      ERC20 tc = ERC20(assets_[i].token);
       _assets.push(
         Asset({
-          token: assets_[i].token,
+          token: tc,
           pythPriceId: assets_[i].pythPriceId,
-          decimals: ERC20(assets_[i].token).decimals(),
+          decimals: tc.decimals(),
           feeAmount: 0
         })
       );
@@ -74,7 +83,7 @@ contract Sap is Ownable, ERC20 {
    * @return the pyth address
    */
   function pyth() public view returns (address) {
-    return _pyth;
+    return address(_pyth);
   }
 
   /**
@@ -82,14 +91,30 @@ contract Sap is Ownable, ERC20 {
    * @return the uniswap router address
    */
   function uniswapRouter() public view returns (address) {
-    return _uniswapRouter;
+    return address(_uniswapRouter);
+  }
+
+  /**
+   * @dev staking address
+   * @return the staking address
+   */
+  function staking() public view returns (address) {
+    return address(_staking);
+  }
+
+  /**
+   * @dev fee discount address
+   * @return the fee discount address
+   */
+  function feeDiscount() public view returns (address) {
+    return address(_feeDiscount);
   }
 
   function _getAssetByToken(
     address token
   ) internal view returns (Asset memory) {
     for (uint256 i = 0; i < _assets.length; i++) {
-      if (_assets[i].token == token) {
+      if (address(_assets[i].token) == token) {
         return _assets[i];
       }
     }
@@ -102,7 +127,7 @@ contract Sap is Ownable, ERC20 {
    * @return the asset token address
    */
   function getAssetToken(uint256 index) public view returns (address) {
-    return _assets[index].token;
+    return address(_assets[index].token);
   }
 
   /**
@@ -156,7 +181,7 @@ contract Sap is Ownable, ERC20 {
   }
 
   function _getFee(uint256 amount) internal view returns (uint256) {
-    return Math.mulDiv(amount, _feeRate, FEE_RATE_DIVIDER);
+    return Math.mulDiv(amount, _feeRate, 10 ** 6);
   }
 
   /**
@@ -170,8 +195,7 @@ contract Sap is Ownable, ERC20 {
     require(amounts_.length == _assets.length, "Sap: invalid amounts");
     for (uint256 i = 0; i < _assets.length; i++) {
       Asset memory asset = _assets[i];
-      IERC20 tc = IERC20(asset.token);
-      tc.transferFrom(msg.sender, address(this), amounts_[i]);
+      asset.token.transferFrom(msg.sender, address(this), amounts_[i]);
     }
     _mint(msg.sender, amount_);
     _initialized = true;
@@ -183,7 +207,7 @@ contract Sap is Ownable, ERC20 {
     Asset memory asset,
     uint8 targetDecimals
   ) internal view returns (uint256) {
-    PythStructs.Price memory price = IPyth(_pyth).getPrice(asset.pythPriceId);
+    PythStructs.Price memory price = _pyth.getPrice(asset.pythPriceId);
     uint8 priceDecimals = uint8(uint32(-1 * price.expo));
     if (priceDecimals >= targetDecimals) {
       return
@@ -205,10 +229,10 @@ contract Sap is Ownable, ERC20 {
     uint8 targetDecimals
   ) internal view returns (uint256) {
     address[] memory path = new address[](2);
-    path[0] = asset.token;
-    path[1] = _assets[0].token;
+    path[0] = address(asset.token);
+    path[1] = address(_assets[0].token);
     uint8 decimals = _assets[0].decimals;
-    uint256[] memory amounts = IUniswapV2Router02(_uniswapRouter).getAmountsOut(
+    uint256[] memory amounts = _uniswapRouter.getAmountsOut(
       10 ** asset.decimals,
       path
     );
@@ -246,7 +270,7 @@ contract Sap is Ownable, ERC20 {
   ) internal view returns (uint256, uint256) {
     uint256 price = _getAssetPrice(asset, decimals());
     uint256 balance = Math.mulDiv(
-      _safeSub(IERC20(asset.token).balanceOf(address(this)), asset.feeAmount),
+      _safeSub(asset.token.balanceOf(address(this)), asset.feeAmount),
       10 ** decimals(),
       10 ** asset.decimals
     );
@@ -288,14 +312,12 @@ contract Sap is Ownable, ERC20 {
     uint256 amountIn,
     address[] memory path
   ) external onlyOwner checkInitialized {
-    IUniswapV2Router02 router = IUniswapV2Router02(_uniswapRouter);
     Asset memory assetIn = _getAssetByToken(path[0]);
-    IERC20 tc = IERC20(assetIn.token);
-    tc.approve(_uniswapRouter, amountIn);
+    assetIn.token.approve(address(_uniswapRouter), amountIn);
     // avoid swap to token not in assets
     _getAssetByToken(path[path.length - 1]);
     // do swap
-    router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+    _uniswapRouter.swapExactTokensForTokensSupportingFeeOnTransferTokens(
       amountIn,
       0,
       path,
@@ -328,7 +350,7 @@ contract Sap is Ownable, ERC20 {
     address token
   ) public view returns (uint256) {
     for (uint256 i = 0; i < _assets.length; i++) {
-      if (_assets[i].token == token) {
+      if (address(_assets[i].token) == token) {
         (, uint256 buyAmount, ) = _getBuyAmount(payAmount, i);
         return buyAmount;
       }
@@ -348,7 +370,7 @@ contract Sap is Ownable, ERC20 {
       index
     );
     _updateHoldPrice(msg.sender, buyAmount, price);
-    IERC20(asset.token).transferFrom(msg.sender, address(this), payAmount);
+    asset.token.transferFrom(msg.sender, address(this), payAmount);
     _mint(msg.sender, buyAmount);
     emit Buy(msg.sender, buyAmount, price);
     return buyAmount;
@@ -378,7 +400,7 @@ contract Sap is Ownable, ERC20 {
     address token
   ) public view returns (uint256) {
     for (uint256 i = 0; i < _assets.length; i++) {
-      if (_assets[i].token == token) {
+      if (address(_assets[i].token) == token) {
         (, uint256 payAmount, ) = _getPayAmount(buyAmount, i);
         return payAmount;
       }
@@ -424,7 +446,7 @@ contract Sap is Ownable, ERC20 {
     uint256 holdPrice
   ) public view returns (uint256) {
     for (uint256 i = 0; i < _assets.length; i++) {
-      if (_assets[i].token == token) {
+      if (address(_assets[i].token) == token) {
         (, uint256 receiveAmount, , ) = _getReceiveAmount(
           sellAmount,
           i,
@@ -451,7 +473,7 @@ contract Sap is Ownable, ERC20 {
     ) = _getReceiveAmount(sellAmount, index, _holdPrices[msg.sender]);
     _assets[index].feeAmount = _safeAdd(_assets[index].feeAmount, fee);
     _burn(msg.sender, sellAmount);
-    IERC20(asset.token).transfer(msg.sender, receiveAmount);
+    asset.token.transfer(msg.sender, receiveAmount);
     emit Sell(msg.sender, sellAmount, price);
     return receiveAmount;
   }
@@ -491,7 +513,7 @@ contract Sap is Ownable, ERC20 {
     uint256 holdPrice
   ) public view returns (uint256) {
     for (uint256 i = 0; i < _assets.length; i++) {
-      if (_assets[i].token == token) {
+      if (address(_assets[i].token) == token) {
         (, uint256 sellAmount, , ) = _getSellAmount(
           receiveAmount,
           i,
@@ -506,7 +528,7 @@ contract Sap is Ownable, ERC20 {
   function claimAllFee() external onlyOwner {
     for (uint256 i = 0; i < _assets.length; i++) {
       Asset memory asset = _assets[i];
-      IERC20(asset.token).transfer(msg.sender, asset.feeAmount);
+      asset.token.transfer(msg.sender, asset.feeAmount);
       asset.feeAmount = 0;
     }
   }
