@@ -329,17 +329,6 @@ describe("deploy test", () => {
 });
 
 describe("fee discount test", () => {
-  test("should be right fee discount", async () => {
-    const { joey, feeDiscount } = await loadFixture(deploy);
-    const dj = await joey.decimals();
-    strictEqual(
-      await feeDiscount.getFeeDiscount(n2b(2000000, dj)),
-      n2b(0.2, 6),
-    );
-    strictEqual(await feeDiscount.getFeeDiscount(n2b(2000, dj)), n2b(0.2, 6));
-    strictEqual(await feeDiscount.getFeeDiscount(n2b(1000, dj)), n2b(0.1, 6));
-    strictEqual(await feeDiscount.getFeeDiscount(n2b(999, dj)), 0n);
-  });
   test("should be set fee discount", async () => {
     const { joey, feeDiscount } = await loadFixture(deploy);
     const dj = await joey.decimals();
@@ -366,6 +355,32 @@ describe("fee discount test", () => {
           [n2b(0.3, 6), n2b(0.25, 6), n2b(0.11, 6)],
         ),
       /OwnableUnauthorizedAccount/,
+    );
+  });
+  test("should be right fee discount", async () => {
+    const { joey, feeDiscount } = await loadFixture(deploy);
+    const dj = await joey.decimals();
+    strictEqual(
+      await feeDiscount.getFeeDiscount(n2b(2000000, dj)),
+      n2b(0.2, 6),
+    );
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(2000, dj)), n2b(0.2, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(1000, dj)), n2b(0.1, 6));
+    strictEqual(await feeDiscount.getFeeDiscount(n2b(999, dj)), 0n);
+  });
+  test("should be right fee discounted amount", async () => {
+    const { joey, feeDiscount } = await loadFixture(deploy);
+    const dj = await joey.decimals();
+    const fee = 2000;
+    const fa = n2b(fee, dj);
+    const feeAmount = await feeDiscount.getFeeDiscountedAmount(
+      n2b(2000, dj),
+      fa,
+    );
+    strictEqual(
+      feeAmount,
+      n2b(fee * (1 - 0.2), dj),
+      "fee discounted amount is not right",
     );
   });
 });
@@ -701,12 +716,14 @@ describe("price test", () => {
     // update price
     await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 1.1, 6), -6);
     const newPrice = await sap.getPrice();
+    console.log("price", holdPrice, newPrice);
     // sell
     const sellAmount = await sap.balanceOf(otherAccount.address);
     const receiveAmount = await sap.getReceiveAmount(
       sellAmount,
       usdcAddress,
       holdPrice,
+      0n,
     );
     const usdcPrice = await sap.getAssetPrice(0);
     const jsReceiveAmount =

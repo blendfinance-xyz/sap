@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract FeeDiscount is Ownable {
@@ -46,5 +47,25 @@ contract FeeDiscount is Ownable {
       }
     }
     return 0;
+  }
+
+  /**
+   * @dev get fee discounted amount
+   * @param staked staked amount
+   * @param amount amount in
+   * @return amount out
+   */
+  function getFeeDiscountedAmount(
+    uint256 staked,
+    uint256 amount
+  ) public view returns (uint256) {
+    return
+      _safeSub(amount, Math.mulDiv(amount, getFeeDiscount(staked), 10 ** 6));
+  }
+
+  function _safeSub(uint256 a, uint256 b) internal pure returns (uint256) {
+    (bool isMathSafe, uint256 c) = Math.trySub(a, b);
+    require(isMathSafe, "Fee discount: math error");
+    return c;
   }
 }

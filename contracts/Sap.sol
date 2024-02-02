@@ -191,8 +191,16 @@ contract Sap is Ownable, ERC20 {
     _feeRate = feeRate_;
   }
 
-  function _getFee(uint256 amount) internal view returns (uint256) {
-    return Math.mulDiv(amount, _feeRate, 10 ** 6);
+  function _getFee(
+    uint256 amount,
+    uint256 stakedAmount
+  ) internal view returns (uint256) {
+    return
+      Math.mulDiv(
+        _feeDiscount.getFeeDiscountedAmount(amount, stakedAmount),
+        _feeRate,
+        10 ** 6
+      );
   }
 
   /**
@@ -418,7 +426,8 @@ contract Sap is Ownable, ERC20 {
   function _getReceiveAmount(
     uint256 sellAmount,
     uint256 index,
-    uint256 holdPrice
+    uint256 holdPrice,
+    uint256 stakedAmount
   )
     internal
     view
@@ -431,7 +440,8 @@ contract Sap is Ownable, ERC20 {
     uint256 fee = 0;
     if (holdPrice <= price) {
       fee = _getFee(
-        Math.mulDiv(_safeSub(price, holdPrice), sellAmount, assetPrice)
+        Math.mulDiv(_safeSub(price, holdPrice), sellAmount, assetPrice),
+        stakedAmount
       );
     }
     uint256 receiveAmount = Math.mulDiv(
@@ -450,12 +460,14 @@ contract Sap is Ownable, ERC20 {
   function getReceiveAmount(
     uint256 sellAmount,
     address token,
-    uint256 holdPrice
+    uint256 holdPrice,
+    uint256 stakedAmount
   ) public view returns (uint256) {
     (, uint256 receiveAmount, , ) = _getReceiveAmount(
       sellAmount,
       _getAssetIndexByToken(token),
-      holdPrice
+      holdPrice,
+      stakedAmount
     );
     return receiveAmount;
   }
@@ -472,7 +484,12 @@ contract Sap is Ownable, ERC20 {
       uint256 receiveAmount,
       uint256 price,
       uint256 fee
-    ) = _getReceiveAmount(sellAmount, index, _holdPrices[msg.sender]);
+    ) = _getReceiveAmount(
+        sellAmount,
+        index,
+        _holdPrices[msg.sender],
+        _staking.balanceOf(msg.sender)
+      );
     _assets[index].feeAmount = _safeAdd(_assets[index].feeAmount, fee);
     _burn(msg.sender, sellAmount);
     asset.token.transfer(msg.sender, receiveAmount);
@@ -483,7 +500,8 @@ contract Sap is Ownable, ERC20 {
   function _getSellAmount(
     uint256 receiveAmount,
     uint256 index,
-    uint256 holdPrice
+    uint256 holdPrice,
+    uint256 stakedAmount
   ) internal view returns (Asset memory, uint256, uint256, uint256) {
     // sap price
     (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
@@ -499,7 +517,10 @@ contract Sap is Ownable, ERC20 {
         receiveAmount,
         _safeAdd(_safeDiv(price, assetPrice), _safeSub(price, holdPrice))
       );
-      uint256 fee = _getFee(_safeMul(_safeSub(price, holdPrice), sellAmount));
+      uint256 fee = _getFee(
+        _safeMul(_safeSub(price, holdPrice), sellAmount),
+        stakedAmount
+      );
       return (asset, sellAmount, price, fee);
     }
   }
@@ -512,12 +533,14 @@ contract Sap is Ownable, ERC20 {
   function getSellAmount(
     uint256 receiveAmount,
     address token,
-    uint256 holdPrice
+    uint256 holdPrice,
+    uint256 stakedAmount
   ) public view returns (uint256) {
     (, uint256 sellAmount, , ) = _getSellAmount(
       receiveAmount,
       _getAssetIndexByToken(token),
-      holdPrice
+      holdPrice,
+      stakedAmount
     );
     return sellAmount;
   }
