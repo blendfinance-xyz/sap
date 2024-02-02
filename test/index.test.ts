@@ -711,6 +711,18 @@ describe("price test", () => {
       "sap fee is not right",
     );
   });
+  test("should be right fee", async () => {
+    const { sap, usdc, feeRate, feeDiscount } = await init();
+    const usdcDecimals = await usdc.decimals();
+    const stakedAmount = 2001n;
+    assertNumber(
+      b2n(await sap.getFee(n2b(100, usdcDecimals), stakedAmount), usdcDecimals),
+      100 *
+        feeRate *
+        (1 - b2n(await feeDiscount.getFeeDiscount(stakedAmount), 6)),
+      "sap fee is not right",
+    );
+  });
   test("should be right receive amount", async () => {
     const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds, feeRate } =
       await init();
@@ -743,6 +755,88 @@ describe("price test", () => {
       b2n(receiveAmount, usdcDecimals),
       jsReceiveAmount - jsFeeAmount,
       "sap receive amount is not right",
+    );
+  });
+  test("should be right receive amount with fee discount", async () => {
+    const {
+      otherAccount,
+      sap,
+      usdc,
+      pyth,
+      pythPrices,
+      pythPriceIds,
+      feeRate,
+      feeDiscount,
+    } = await init();
+    const usdcAddress = await usdc.getAddress();
+    const decimals = await sap.decimals();
+    const so = sap.connect(otherAccount);
+    const usdcDecimals = await usdc.decimals();
+    // buy
+    const payAmount = n2b(100, usdcDecimals);
+    await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
+    await so.buy(payAmount, 0);
+    const holdPrice = await sap.getHoldPrice(otherAccount.address);
+    // update price
+    await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 1.1, 6), -6);
+    const newPrice = await sap.getPrice();
+    // sell
+    const stakedAmount = 2001n;
+    const sellAmount = await sap.balanceOf(otherAccount.address);
+    const receiveAmount = await sap.getReceiveAmount(
+      sellAmount,
+      usdcAddress,
+      holdPrice,
+      stakedAmount,
+    );
+    const usdcPrice = await sap.getAssetPrice(0);
+    const jsReceiveAmount = b2n((newPrice * sellAmount) / usdcPrice, decimals);
+    const jsFeeAmount =
+      b2n(((newPrice - holdPrice) * sellAmount) / usdcPrice, decimals) *
+      feeRate *
+      (1 - b2n(await feeDiscount.getFeeDiscount(stakedAmount), 6));
+    assertNumber(
+      b2n(receiveAmount, usdcDecimals),
+      jsReceiveAmount - jsFeeAmount,
+      "sap receive amount is not right",
+    );
+  });
+  test("should be right sell amount", async () => {
+    const {
+      otherAccount,
+      sap,
+      usdc,
+      pyth,
+      pythPrices,
+      pythPriceIds,
+      feeRate,
+      feeDiscount,
+    } = await init();
+    const usdcAddress = await usdc.getAddress();
+    const decimals = await sap.decimals();
+    const so = sap.connect(otherAccount);
+    const usdcDecimals = await usdc.decimals();
+    // buy
+    const payAmount = n2b(100, usdcDecimals);
+    await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
+    await so.buy(payAmount, 0);
+    const holdPrice = await sap.getHoldPrice(otherAccount.address);
+    // update price
+    await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 0.9, 6), -6);
+    const newPrice = await sap.getPrice();
+    // sell
+    const sellAmount = await sap.getSellAmount(
+      payAmount,
+      usdcAddress,
+      holdPrice,
+      0n,
+    );
+    const usdcPrice = await sap.getAssetPrice(0);
+    const jsSellAmount = b2n((payAmount * usdcPrice) / newPrice, decimals);
+    assertNumber(
+      b2n(sellAmount, decimals),
+      jsSellAmount,
+      "sell amount is not right",
     );
   });
 });
