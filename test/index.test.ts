@@ -701,7 +701,17 @@ describe("price test", () => {
       "hold price is not right",
     );
   });
-  test("should be right sell amount", async () => {
+  test("should be right fee", async () => {
+    const { sap, usdc, feeRate } = await init();
+    const usdcDecimals = await usdc.decimals();
+    const stakedAmount = 0n;
+    assertNumber(
+      b2n(await sap.getFee(n2b(100, usdcDecimals), stakedAmount), usdcDecimals),
+      100 * feeRate,
+      "sap fee is not right",
+    );
+  });
+  test("should be right receive amount", async () => {
     const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds, feeRate } =
       await init();
     const usdcAddress = await usdc.getAddress();
@@ -716,7 +726,6 @@ describe("price test", () => {
     // update price
     await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 1.1, 6), -6);
     const newPrice = await sap.getPrice();
-    console.log("price", holdPrice, newPrice);
     // sell
     const sellAmount = await sap.balanceOf(otherAccount.address);
     const receiveAmount = await sap.getReceiveAmount(
@@ -726,12 +735,13 @@ describe("price test", () => {
       0n,
     );
     const usdcPrice = await sap.getAssetPrice(0);
-    const jsReceiveAmount =
+    const jsReceiveAmount = b2n((newPrice * sellAmount) / usdcPrice, decimals);
+    const jsFeeAmount =
       b2n(((newPrice - holdPrice) * sellAmount) / usdcPrice, decimals) *
-      (1 - feeRate);
+      feeRate;
     assertNumber(
-      b2n(receiveAmount - payAmount, usdcDecimals),
-      jsReceiveAmount,
+      b2n(receiveAmount, usdcDecimals),
+      jsReceiveAmount - jsFeeAmount,
       "sap receive amount is not right",
     );
   });

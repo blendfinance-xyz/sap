@@ -197,10 +197,22 @@ contract Sap is Ownable, ERC20 {
   ) internal view returns (uint256) {
     return
       Math.mulDiv(
-        _feeDiscount.getFeeDiscountedAmount(amount, stakedAmount),
+        _feeDiscount.getFeeDiscountedAmount(stakedAmount, amount),
         _feeRate,
         10 ** 6
       );
+  }
+
+  /**
+   * @dev get the fee
+   * @param amount the amount
+   * @param stakedAmount the staked amount
+   */
+  function getFee(
+    uint256 amount,
+    uint256 stakedAmount
+  ) public view returns (uint256) {
+    return _getFee(amount, stakedAmount);
   }
 
   /**
@@ -351,11 +363,7 @@ contract Sap is Ownable, ERC20 {
   ) internal view checkInitialized returns (Asset memory, uint256, uint256) {
     // sap price
     (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
-    uint256 buyAmount = Math.mulDiv(
-      Math.mulDiv(payAmount, 10 ** decimals(), 10 ** asset.decimals),
-      assetPrice,
-      price
-    );
+    uint256 buyAmount = Math.mulDiv(payAmount, assetPrice, price);
     return (asset, buyAmount, price);
   }
 
@@ -399,11 +407,7 @@ contract Sap is Ownable, ERC20 {
   ) internal view checkInitialized returns (Asset memory, uint256, uint256) {
     // sap price
     (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
-    uint256 payAmount = Math.mulDiv(
-      Math.mulDiv(buyAmount, 10 ** asset.decimals, 10 ** decimals()),
-      price,
-      assetPrice
-    );
+    uint256 payAmount = Math.mulDiv(buyAmount, price, assetPrice);
     return (asset, payAmount, price);
   }
 
@@ -436,19 +440,16 @@ contract Sap is Ownable, ERC20 {
   {
     // sap price
     (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
+    // receive amount
+    uint256 receiveAmount = Math.mulDiv(sellAmount, price, assetPrice);
     // profit fee
     uint256 fee = 0;
     if (holdPrice <= price) {
       fee = _getFee(
-        Math.mulDiv(_safeSub(price, holdPrice), sellAmount, assetPrice),
+        Math.mulDiv(sellAmount, _safeSub(price, holdPrice), assetPrice),
         stakedAmount
       );
     }
-    uint256 receiveAmount = Math.mulDiv(
-      Math.mulDiv(sellAmount, 10 ** asset.decimals, 10 ** decimals()),
-      price,
-      assetPrice
-    );
     return (asset, _safeSub(receiveAmount, fee), price, fee);
   }
 
@@ -506,11 +507,7 @@ contract Sap is Ownable, ERC20 {
     // sap price
     (uint256 price, Asset memory asset, uint256 assetPrice) = _getPrice(index);
     if (holdPrice > price) {
-      uint256 sellAmount = Math.mulDiv(
-        Math.mulDiv(receiveAmount, 10 ** decimals(), 10 ** asset.decimals),
-        assetPrice,
-        price
-      );
+      uint256 sellAmount = Math.mulDiv(receiveAmount, assetPrice, price);
       return (asset, sellAmount, price, 0);
     } else {
       uint256 sellAmount = _safeDiv(
