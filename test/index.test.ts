@@ -1,14 +1,15 @@
-import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { ContractFactory } from "ethers";
 import { describe, test } from "mocha";
 import assert, { strictEqual } from "node:assert";
-import { Sap as SapContract } from "../typechain-types/contracts/Sap";
-import { Token as TokenContract } from "../typechain-types/contracts/Token";
+import { FeeDiscount as FeeDiscountContract } from "../typechain-types/contracts/FeeDiscount";
 import { Pyth as PythContract } from "../typechain-types/contracts/Pyth";
+import { Sap as SapContract } from "../typechain-types/contracts/Sap";
+import { Staking as StakingContract } from "../typechain-types/contracts/Staking";
+import { Token as TokenContract } from "../typechain-types/contracts/Token";
 import { UniswapV2Factory as UniswapV2FactoryContract } from "../typechain-types/contracts/UniswapV2Factory";
 import { UniswapV2Router02 as UniswapV2Router02Contract } from "../typechain-types/contracts/UniswapV2Router02";
-import { Staking as StakingContract } from "../typechain-types/contracts/Staking";
-import { FeeDiscount as FeeDiscountContract } from "../typechain-types/contracts/FeeDiscount";
+import { b2n, n2b } from "../utils/math";
 
 // @ts-ignore
 import { ethers } from "hardhat";
@@ -16,31 +17,7 @@ import { ethers } from "hardhat";
 // all time on chain is in second
 const DAY_MULTIPLIER = 24n * 60n * 60n;
 
-function n2b(n: number, decimals: number | bigint): bigint {
-  const ns = n.toString();
-  let [int, dec] = ns.split(".");
-  if (int === "0") int = "";
-  if (!dec) dec = "";
-  if (dec.length <= Number(decimals)) {
-    dec = dec.padEnd(Number(decimals), "0");
-  } else {
-    dec = dec.slice(0, Number(decimals));
-  }
-  return BigInt(`${int}${dec}`);
-}
-
-function b2n(b: bigint, decimals: number | bigint): number {
-  const bs = b.toString();
-  if (bs.length <= Number(decimals)) {
-    return parseFloat(`0.${bs.padStart(Number(decimals), "0")}`);
-  } else {
-    return parseFloat(
-      `${bs.slice(0, bs.length - Number(decimals))}.${bs.slice(bs.length - Number(decimals))}`,
-    );
-  }
-}
-
-export function assertNumber(a: number, b: number, msg?: string) {
+function assertNumber(a: number, b: number, msg?: string) {
   assert(Math.abs(a - b) < 0.001, `${msg ?? ""} ${a} != ${b}`);
 }
 
