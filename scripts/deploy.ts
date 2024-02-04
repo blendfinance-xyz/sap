@@ -19,38 +19,55 @@ async function sap() {
     sol: "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
     null: "0x0000000000000000000000000000000000000000000000000000000000000000",
   };
+  // https://docs.pyth.network/price-feeds/contract-addresses/evm
+  const pyth = "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729";
+  // uniswap
+  const uniswapRouter = "0xd5e5597068b889e1625171186E6e302c9De36F09";
+  // staking
+  const staking = "0xD406B0edDDABF1e3fb09fF3588D70836A18d0ef2";
+  // fee discount
+  const feeDiscount = "0x386c86741D6976fe1225BE47Dc5d094Ad31Ba4D2";
+  // tokens
+  const tokens = {
+    usdc: "0x602FA06D258571BBE03e05Fd09C96035d425757D",
+    btc: "0x999465395081B7e57ccda9e1d3CCF6Bd7525CA99",
+    weth: "0xf73306A78d66fE18C7a8F5df13aD3f3aA65dE31c",
+    bnb: "0x3308A241E42e8B59de1a5f3fA4A1A3Ab2E3d46EF",
+    sol: "0xC3C85E25d4a2c451e8C964A13bA7d1a471cD35f5",
+    bld: "0xA37E268923652749Ba41DD0bBF6227C276047463",
+  };
   // sap
   const sap = await ethers.deployContract("Sap", [
     "Sap",
     "SAP",
     n2b(6 / 100.0, 6),
-    "0xA2aa501b19aff244D90cc15a4Cf739D2725B5729",
-    "0xd5e5597068b889e1625171186E6e302c9De36F09",
-    "0xD406B0edDDABF1e3fb09fF3588D70836A18d0ef2",
-    "0x386c86741D6976fe1225BE47Dc5d094Ad31Ba4D2",
+    pyth,
+    uniswapRouter,
+    staking,
+    feeDiscount,
     [
       {
-        token: "0x602FA06D258571BBE03e05Fd09C96035d425757D",
+        token: tokens.usdc,
         pythPriceId: pythPriceIds.usdc,
       },
       {
-        token: "0x999465395081B7e57ccda9e1d3CCF6Bd7525CA99",
+        token: tokens.btc,
         pythPriceId: pythPriceIds.btc,
       },
       {
-        token: "0xf73306A78d66fE18C7a8F5df13aD3f3aA65dE31c",
+        token: tokens.weth,
         pythPriceId: pythPriceIds.weth,
       },
       {
-        token: "0x3308A241E42e8B59de1a5f3fA4A1A3Ab2E3d46EF",
+        token: tokens.bnb,
         pythPriceId: pythPriceIds.bnb,
       },
       {
-        token: "0xC3C85E25d4a2c451e8C964A13bA7d1a471cD35f5",
+        token: tokens.sol,
         pythPriceId: pythPriceIds.sol,
       },
       {
-        token: "0xA37E268923652749Ba41DD0bBF6227C276047463",
+        token: tokens.bld,
         pythPriceId: pythPriceIds.null,
       },
     ],
