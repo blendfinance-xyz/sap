@@ -28,7 +28,9 @@ contract Pyth is IPyth {
 
   function getPriceUnsafe(
     bytes32 id
-  ) external view override returns (PythStructs.Price memory price) {}
+  ) external view override returns (PythStructs.Price memory price) {
+    return _prices[id];
+  }
 
   function getPriceNoOlderThan(
     bytes32 id,

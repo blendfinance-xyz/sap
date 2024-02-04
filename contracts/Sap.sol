@@ -238,7 +238,7 @@ contract Sap is Ownable, ERC20 {
     Asset memory asset,
     uint8 targetDecimals
   ) internal view returns (uint256) {
-    PythStructs.Price memory price = _pyth.getPrice(asset.pythPriceId);
+    PythStructs.Price memory price = _pyth.getPriceUnsafe(asset.pythPriceId);
     uint8 priceDecimals = uint8(uint32(-1 * price.expo));
     if (priceDecimals >= targetDecimals) {
       return
