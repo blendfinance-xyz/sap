@@ -510,10 +510,7 @@ contract Sap is Ownable, ERC20 {
       uint256 sellAmount = Math.mulDiv(receiveAmount, assetPrice, price);
       return (asset, sellAmount, price, 0);
     } else {
-      uint256 sellAmount = _safeDiv(
-        receiveAmount,
-        _safeAdd(_safeDiv(price, assetPrice), _safeSub(price, holdPrice))
-      );
+      uint256 sellAmount = Math.mulDiv(receiveAmount, assetPrice, holdPrice);
       uint256 fee = _getFee(
         _safeMul(_safeSub(price, holdPrice), sellAmount),
         stakedAmount

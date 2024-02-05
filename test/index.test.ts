@@ -808,4 +808,35 @@ describe("price test", () => {
       "sell amount is not right",
     );
   });
+  test("should be right sell amount", async () => {
+    const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds } =
+      await init();
+    const usdcAddress = await usdc.getAddress();
+    const decimals = await sap.decimals();
+    const so = sap.connect(otherAccount);
+    const usdcDecimals = await usdc.decimals();
+    // buy
+    const payAmount = n2b(1, usdcDecimals);
+    await usdc.connect(otherAccount).approve(await sap.getAddress(), payAmount);
+    await so.buy(payAmount, 0);
+    const holdPrice = await sap.getHoldPrice(otherAccount.address);
+    // update price
+    await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 1.1, 6), -6);
+    const newPrice = await sap.getPrice();
+    // sell
+    const sellAmount = await sap.getSellAmount(
+      payAmount,
+      usdcAddress,
+      holdPrice,
+      0n,
+    );
+    const usdcPrice = await sap.getAssetPrice(0);
+    const jsSellAmount = b2n((payAmount * usdcPrice) / newPrice, decimals);
+    // will be some diff because js sell amount has no fee
+    assertNumber(
+      b2n(sellAmount, decimals),
+      jsSellAmount,
+      "sell amount is not right",
+    );
+  });
 });
