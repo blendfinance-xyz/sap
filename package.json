@@ -9,7 +9,7 @@
     "compile": "npx hardhat compile",
     "start-node": "npx hardhat node",
     "deploy": "npx hardhat run --network blast-sepolia scripts/deploy.ts",
-    "verify": "npx hardhat verify --network blast-sepolia"
+    "verify": "npx hardhat verify --network blast-sepolia --constructor-args scripts/args.js"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.7.0",
