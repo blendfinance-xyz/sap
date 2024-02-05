@@ -809,7 +809,7 @@ describe("price test", () => {
     );
   });
   test("should be right sell amount", async () => {
-    const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds } =
+    const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds, feeRate } =
       await init();
     const usdcAddress = await usdc.getAddress();
     const decimals = await sap.decimals();
@@ -831,12 +831,21 @@ describe("price test", () => {
       0n,
     );
     const usdcPrice = await sap.getAssetPrice(0);
-    const jsSellAmount = b2n((payAmount * usdcPrice) / newPrice, decimals);
-    // will be some diff because js sell amount has no fee
+    const jsSellAmount =
+      (payAmount * usdcPrice) /
+      (newPrice - ((newPrice - holdPrice) * n2b(feeRate, 6)) / 10n ** 6n);
     assertNumber(
       b2n(sellAmount, decimals),
-      jsSellAmount,
+      b2n(jsSellAmount, decimals),
       "sell amount is not right",
+    );
+    const fee =
+      (jsSellAmount * (newPrice - holdPrice) * n2b(feeRate, 6)) / 10n ** 6n;
+    const receiveAmount = (jsSellAmount * newPrice - fee) / usdcPrice;
+    assertNumber(
+      b2n(payAmount, usdcDecimals),
+      b2n(receiveAmount, usdcDecimals),
+      "receive amount is not right",
     );
   });
 });
