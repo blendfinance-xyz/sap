@@ -17,7 +17,9 @@ const config: HardhatUserConfig = {
     // },
     "blast-sepolia": {
       url: "https://sepolia.blast.io",
-      accounts: [process.env.PRIVATE_KEY as string],
+      accounts: process.env.PRIVATE_KEY
+        ? [process.env.PRIVATE_KEY as string]
+        : undefined,
       gasPrice: 1000000000,
     },
     localhost: {

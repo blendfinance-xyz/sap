@@ -239,6 +239,7 @@ describe("deploy test", () => {
   });
   test("should be right token", async () => {
     const { usdc, btc, weth, bnb, sol, joey, sap } = await loadFixture(deploy);
+    strictEqual(await sap.assetsLength(), 6n, "sap assets length is not right");
     strictEqual(
       await usdc.getAddress(),
       await sap.getAssetToken(0),
@@ -645,8 +646,8 @@ describe("price test", () => {
     const usdcAddress = await usdc.getAddress();
     const usdcDecimals = await usdc.decimals();
     const payAmount = n2b(100, usdcDecimals);
-    const buyAmount = await sap.getBuyAmount(payAmount, usdcAddress);
-    const resPayAmount = await sap.getPayAmount(buyAmount, usdcAddress);
+    const buyAmount = await sap.getBuyAmount(payAmount, 0);
+    const resPayAmount = await sap.getPayAmount(buyAmount, 0);
     assertNumber(
       b2n(payAmount, usdcDecimals),
       b2n(resPayAmount, usdcDecimals),
@@ -703,7 +704,6 @@ describe("price test", () => {
   test("should be right receive amount", async () => {
     const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds, feeRate } =
       await init();
-    const usdcAddress = await usdc.getAddress();
     const decimals = await sap.decimals();
     const so = sap.connect(otherAccount);
     const usdcDecimals = await usdc.decimals();
@@ -719,7 +719,7 @@ describe("price test", () => {
     const sellAmount = await sap.balanceOf(otherAccount.address);
     const receiveAmount = await sap.getReceiveAmount(
       sellAmount,
-      usdcAddress,
+      0,
       holdPrice,
       0n,
     );
@@ -745,7 +745,6 @@ describe("price test", () => {
       feeRate,
       feeDiscount,
     } = await init();
-    const usdcAddress = await usdc.getAddress();
     const decimals = await sap.decimals();
     const so = sap.connect(otherAccount);
     const usdcDecimals = await usdc.decimals();
@@ -762,7 +761,7 @@ describe("price test", () => {
     const sellAmount = await sap.balanceOf(otherAccount.address);
     const receiveAmount = await sap.getReceiveAmount(
       sellAmount,
-      usdcAddress,
+      0,
       holdPrice,
       stakedAmount,
     );
@@ -781,7 +780,6 @@ describe("price test", () => {
   test("should be right sell amount", async () => {
     const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds } =
       await init();
-    const usdcAddress = await usdc.getAddress();
     const decimals = await sap.decimals();
     const so = sap.connect(otherAccount);
     const usdcDecimals = await usdc.decimals();
@@ -794,12 +792,7 @@ describe("price test", () => {
     await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 0.9, 6), -6);
     const newPrice = await sap.getPrice();
     // sell
-    const sellAmount = await sap.getSellAmount(
-      payAmount,
-      usdcAddress,
-      holdPrice,
-      0n,
-    );
+    const sellAmount = await sap.getSellAmount(payAmount, 0, holdPrice, 0n);
     const usdcPrice = await sap.getAssetPrice(0);
     const jsSellAmount = b2n((payAmount * usdcPrice) / newPrice, decimals);
     assertNumber(
@@ -811,7 +804,6 @@ describe("price test", () => {
   test("should be right sell amount", async () => {
     const { otherAccount, sap, usdc, pyth, pythPrices, pythPriceIds, feeRate } =
       await init();
-    const usdcAddress = await usdc.getAddress();
     const decimals = await sap.decimals();
     const so = sap.connect(otherAccount);
     const usdcDecimals = await usdc.decimals();
@@ -824,12 +816,7 @@ describe("price test", () => {
     await pyth.putPrice(pythPriceIds.btc, n2b(pythPrices.btc * 1.1, 6), -6);
     const newPrice = await sap.getPrice();
     // sell
-    const sellAmount = await sap.getSellAmount(
-      payAmount,
-      usdcAddress,
-      holdPrice,
-      0n,
-    );
+    const sellAmount = await sap.getSellAmount(payAmount, 0, holdPrice, 0n);
     const usdcPrice = await sap.getAssetPrice(0);
     const jsSellAmount =
       (payAmount * usdcPrice) /

@@ -75,7 +75,7 @@ contract Sap is Ownable, ERC20 {
       );
     }
     // remark this line before test, because blast is not available on local
-    IBlast(0x4300000000000000000000000000000000000002).configureClaimableGas();
+    // IBlast(0x4300000000000000000000000000000000000002).configureClaimableGas();
   }
 
   /**
@@ -121,15 +121,11 @@ contract Sap is Ownable, ERC20 {
     revert("Sap: asset not found");
   }
 
-  function _getAssetIndexByToken(
-    address token
-  ) internal view returns (uint256) {
-    for (uint256 i = 0; i < _assets.length; i++) {
-      if (address(_assets[i].token) == token) {
-        return i;
-      }
-    }
-    revert("Sap: asset not found");
+  /**
+   * @dev get the assets length
+   */
+  function assetsLength() public view returns (uint256) {
+    return _assets.length;
   }
 
   /**
@@ -370,16 +366,13 @@ contract Sap is Ownable, ERC20 {
   /**
    * @dev get the amount of sap will buy
    * @param payAmount the amount of token to pay
-   * @param token the token to pay
+   * @param index the index of the asset
    */
   function getBuyAmount(
     uint256 payAmount,
-    address token
+    uint256 index
   ) public view returns (uint256) {
-    (, uint256 buyAmount, ) = _getBuyAmount(
-      payAmount,
-      _getAssetIndexByToken(token)
-    );
+    (, uint256 buyAmount, ) = _getBuyAmount(payAmount, index);
     return buyAmount;
   }
 
@@ -414,16 +407,13 @@ contract Sap is Ownable, ERC20 {
   /**
    * @dev get the amount of token will pay
    * @param buyAmount the amount of sap to buy
-   * @param token the token to pay
+   * @param index the index of the asset
    */
   function getPayAmount(
     uint256 buyAmount,
-    address token
+    uint256 index
   ) public view returns (uint256) {
-    (, uint256 payAmount, ) = _getPayAmount(
-      buyAmount,
-      _getAssetIndexByToken(token)
-    );
+    (, uint256 payAmount, ) = _getPayAmount(buyAmount, index);
     return payAmount;
   }
 
@@ -456,17 +446,17 @@ contract Sap is Ownable, ERC20 {
   /**
    * @dev get the amount of token will receive
    * @param sellAmount the amount of sap to sell
-   * @param token the token to get out
+   * @param index the index of the asset
    */
   function getReceiveAmount(
     uint256 sellAmount,
-    address token,
+    uint256 index,
     uint256 holdPrice,
     uint256 stakedAmount
   ) public view returns (uint256) {
     (, uint256 receiveAmount, , ) = _getReceiveAmount(
       sellAmount,
-      _getAssetIndexByToken(token),
+      index,
       holdPrice,
       stakedAmount
     );
@@ -524,17 +514,17 @@ contract Sap is Ownable, ERC20 {
   /**
    * @dev get the amount of sap will sell
    * @param receiveAmount the amount of token to receive
-   * @param token the token to get out
+   * @param index the index of the asset
    */
   function getSellAmount(
     uint256 receiveAmount,
-    address token,
+    uint256 index,
     uint256 holdPrice,
     uint256 stakedAmount
   ) public view returns (uint256) {
     (, uint256 sellAmount, , ) = _getSellAmount(
       receiveAmount,
-      _getAssetIndexByToken(token),
+      index,
       holdPrice,
       stakedAmount
     );
