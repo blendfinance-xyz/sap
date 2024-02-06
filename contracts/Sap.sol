@@ -227,7 +227,7 @@ contract Sap is Ownable, ERC20 {
     _mint(msg.sender, amount_);
     _initialized = true;
     _holdPrices[msg.sender] = getPrice();
-    emit Init(getPrice(), amount_);
+    emit Init(amount_, getPrice());
   }
 
   function _getAssetPriceFromPyth(
