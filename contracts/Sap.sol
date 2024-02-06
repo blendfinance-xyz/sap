@@ -75,7 +75,7 @@ contract Sap is Ownable, ERC20 {
       );
     }
     // remark this line before test, because blast is not available on local
-    // IBlast(0x4300000000000000000000000000000000000002).configureClaimableGas();
+    IBlast(0x4300000000000000000000000000000000000002).configureClaimableGas();
   }
 
   /**
