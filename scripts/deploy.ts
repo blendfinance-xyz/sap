@@ -38,8 +38,8 @@ async function sap() {
   };
   // sap
   const sap = await ethers.deployContract("Sap", [
-    "Sap",
-    "SAP",
+    "AI SAP",
+    "AISP",
     n2b(6 / 100.0, 6),
     pyth,
     uniswapRouter,

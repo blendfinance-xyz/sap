@@ -27,8 +27,8 @@ const tokens = {
 };
 
 module.exports = [
-  "Sap",
-  "SAP",
+  "AI SAP",
+  "AISP",
   (6 / 100.0) * 10 ** 6,
   pyth,
   uniswapRouter,
