@@ -9,7 +9,7 @@ import { Staking as StakingContract } from "../typechain-types/contracts/Staking
 import { Token as TokenContract } from "../typechain-types/contracts/Token";
 import { UniswapV2Factory as UniswapV2FactoryContract } from "../typechain-types/contracts/UniswapV2Factory";
 import { UniswapV2Router02 as UniswapV2Router02Contract } from "../typechain-types/contracts/UniswapV2Router02";
-import { b2n, n2b } from "../utils/math";
+import { b2n, n2b } from "../util";
 
 // @ts-ignore
 import { ethers } from "hardhat";
